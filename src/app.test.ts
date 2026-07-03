@@ -289,6 +289,79 @@ test("GET /api/shares/:shareId/resources/:resourceId/preview rejects binary reso
   assert.equal(response.body.error.code, "PREVIEW_UNSUPPORTED");
 });
 
+test("DELETE /api/shares/:shareId/resources/:resourceId deletes resource for edit links", async () => {
+  const shareStore = createMemoryShareStore();
+  const resourceStore = createMemoryResourceStore();
+  const storageRoot = await mkdtemp(path.join(tmpdir(), "mini-s3-delete-"));
+  const objectStorage = createLocalObjectStorage({ rootDir: storageRoot });
+  const app = createApp({ shareStore, resourceStore, objectStorage });
+
+  const createShareResponse = await request(app)
+    .post("/api/shares")
+    .send({ name: "Edit room", accessMode: "edit", maxResourceBytes: 1024 })
+    .expect(201);
+
+  const share = createShareResponse.body.share;
+  const bytes = Buffer.from("delete me");
+  const resource = createResource({
+    shareId: share.id,
+    originalName: "delete.txt",
+    mimeType: "text/plain",
+    size: bytes.length,
+    bytes,
+    expiresAt: share.expiresAt
+  });
+  await objectStorage.put(resource.storageKey, bytes);
+  await resourceStore.create(resource);
+
+  const deleteResponse = await request(app)
+    .delete(`/api/shares/${share.id}/resources/${resource.id}`)
+    .expect(200);
+
+  assert.equal(deleteResponse.body.resource.id, resource.id);
+  assert.ok(deleteResponse.body.resource.deletedAt);
+  assert.equal(await objectStorage.exists(resource.storageKey), false);
+
+  const listResponse = await request(app).get(`/api/shares/${share.id}/resources`).expect(200);
+  assert.equal(listResponse.body.resources.length, 0);
+
+  const downloadResponse = await request(app)
+    .get(`/api/shares/${share.id}/resources/${resource.id}/download`)
+    .expect(404);
+  assert.equal(downloadResponse.body.error.code, "RESOURCE_NOT_FOUND");
+});
+
+test("DELETE /api/shares/:shareId/resources/:resourceId rejects non-edit links", async () => {
+  const shareStore = createMemoryShareStore();
+  const resourceStore = createMemoryResourceStore();
+  const storageRoot = await mkdtemp(path.join(tmpdir(), "mini-s3-delete-denied-"));
+  const objectStorage = createLocalObjectStorage({ rootDir: storageRoot });
+  const app = createApp({ shareStore, resourceStore, objectStorage });
+
+  const createShareResponse = await request(app)
+    .post("/api/shares")
+    .send({ name: "Upload-only room", accessMode: "upload", maxResourceBytes: 1024 })
+    .expect(201);
+
+  const share = createShareResponse.body.share;
+  const bytes = Buffer.from("keep me");
+  const resource = createResource({
+    shareId: share.id,
+    originalName: "keep.txt",
+    mimeType: "text/plain",
+    size: bytes.length,
+    bytes,
+    expiresAt: share.expiresAt
+  });
+  await objectStorage.put(resource.storageKey, bytes);
+  await resourceStore.create(resource);
+
+  const response = await request(app).delete(`/api/shares/${share.id}/resources/${resource.id}`).expect(403);
+
+  assert.equal(response.body.error.code, "PERMISSION_DENIED");
+  assert.equal(await objectStorage.exists(resource.storageKey), true);
+});
+
 test("POST /api/shares/:shareId/resources rejects readonly links", async () => {
   const app = createApp({ shareStore: createMemoryShareStore(), resourceStore: createMemoryResourceStore() });
 

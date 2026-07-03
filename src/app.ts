@@ -250,6 +250,47 @@ export function createApp(dependencies: AppDependencies = {}) {
     stream.pipe(res);
   });
 
+  app.delete("/api/shares/:shareId/resources/:resourceId", async (req, res) => {
+    const share = await shareStore.findById(routeParam(req.params.shareId));
+
+    if (!share) {
+      res.status(404).json({
+        error: {
+          code: "SHARE_NOT_FOUND",
+          message: "Share link not found."
+        }
+      });
+      return;
+    }
+
+    if (!canAccess(share.accessMode, "delete")) {
+      res.status(403).json({
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "This share link does not allow deletes."
+        }
+      });
+      return;
+    }
+
+    const resource = await resourceStore.findById(routeParam(req.params.resourceId));
+
+    if (!resource || resource.shareId !== share.id || resource.deletedAt) {
+      res.status(404).json({
+        error: {
+          code: "RESOURCE_NOT_FOUND",
+          message: "Resource not found in this share."
+        }
+      });
+      return;
+    }
+
+    await objectStorage.delete(resource.storageKey);
+    const deletedResource = await resourceStore.markDeleted(resource.id);
+
+    res.json({ resource: deletedResource });
+  });
+
   app.post("/api/shares/:shareId/resources", uploadParser.single("file"), async (req, res) => {
     const share = await shareStore.findById(routeParam(req.params.shareId));
 
