@@ -1,14 +1,26 @@
+import path from "node:path";
 import express, { type ErrorRequestHandler, type RequestHandler } from "express";
+import multer from "multer";
 import { canAccess } from "./domain/permissions.js";
 import { createResource } from "./domain/resources.js";
 import { createShare } from "./domain/shares.js";
+import { createLocalObjectStorage } from "./storage/localStorage.js";
+import type { ObjectStorage } from "./storage/storage.js";
 import { createMemoryResourceStore, type ResourceStore } from "./stores/resourceStore.js";
 import { createMemoryShareStore, type ShareStore } from "./stores/shareStore.js";
 
 export type AppDependencies = {
   shareStore?: ShareStore;
   resourceStore?: ResourceStore;
+  objectStorage?: ObjectStorage;
 };
+
+const uploadParser = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 100 * 1024 * 1024
+  }
+});
 
 const notFoundHandler: RequestHandler = (_req, res) => {
   res.status(404).json({
@@ -48,6 +60,8 @@ export function createApp(dependencies: AppDependencies = {}) {
   const app = express();
   const shareStore = dependencies.shareStore || createMemoryShareStore();
   const resourceStore = dependencies.resourceStore || createMemoryResourceStore();
+  const objectStorage =
+    dependencies.objectStorage || createLocalObjectStorage({ rootDir: path.join(process.cwd(), "storage", "objects") });
 
   app.use(express.json({ limit: "1mb" }));
 
@@ -102,7 +116,7 @@ export function createApp(dependencies: AppDependencies = {}) {
     res.json({ share, resources });
   });
 
-  app.post("/api/shares/:shareId/resources", async (req, res) => {
+  app.post("/api/shares/:shareId/resources", uploadParser.single("file"), async (req, res) => {
     const share = await shareStore.findById(req.params.shareId);
 
     if (!share) {
@@ -126,7 +140,8 @@ export function createApp(dependencies: AppDependencies = {}) {
     }
 
     const body = objectBody(req.body);
-    const size = numberField(body, "size", 0);
+    const uploadedFile = req.file;
+    const size = uploadedFile ? uploadedFile.size : numberField(body, "size", 0);
 
     if (size > share.maxResourceBytes) {
       res.status(413).json({
@@ -138,18 +153,25 @@ export function createApp(dependencies: AppDependencies = {}) {
       return;
     }
 
-    const resource = await resourceStore.create(
-      createResource({
-        shareId: share.id,
-        originalName: stringField(body, "originalName", "untitled-resource"),
-        mimeType: stringField(body, "mimeType", "application/octet-stream"),
-        size,
-        expiresAt: share.expiresAt,
-        metadata: objectBody(body.metadata)
-      })
-    );
+    const metadata = typeof body.metadata === "string" ? { note: body.metadata } : objectBody(body.metadata);
+    const resource = createResource({
+      shareId: share.id,
+      originalName: uploadedFile?.originalname || stringField(body, "originalName", "untitled-resource"),
+      mimeType: uploadedFile?.mimetype || stringField(body, "mimeType", "application/octet-stream"),
+      size,
+      bytes: uploadedFile?.buffer,
+      expiresAt: share.expiresAt,
+      metadata
+    });
 
-    res.status(201).json({ resource });
+    if (uploadedFile) {
+      // Bytes are saved first so metadata never points to a missing object.
+      await objectStorage.put(resource.storageKey, uploadedFile.buffer);
+    }
+
+    const savedResource = await resourceStore.create(resource);
+
+    res.status(201).json({ resource: savedResource });
   });
 
   app.use(notFoundHandler);

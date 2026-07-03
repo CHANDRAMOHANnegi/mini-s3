@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { test } from "node:test";
 import request from "supertest";
 import { createApp } from "./app.js";
 import { createResource } from "./domain/resources.js";
+import { createLocalObjectStorage } from "./storage/localStorage.js";
 import { createMemoryResourceStore } from "./stores/resourceStore.js";
 import { createMemoryShareStore } from "./stores/shareStore.js";
 
@@ -120,6 +124,40 @@ test("POST /api/shares/:shareId/resources creates resource metadata", async () =
   const listResponse = await request(app).get(`/api/shares/${share.id}/resources`).expect(200);
   assert.equal(listResponse.body.resources.length, 1);
   assert.equal(listResponse.body.resources[0].id, createResourceResponse.body.resource.id);
+});
+
+test("POST /api/shares/:shareId/resources uploads file bytes", async () => {
+  const shareStore = createMemoryShareStore();
+  const resourceStore = createMemoryResourceStore();
+  const storageRoot = await mkdtemp(path.join(tmpdir(), "mini-s3-upload-"));
+  const objectStorage = createLocalObjectStorage({ rootDir: storageRoot });
+  const app = createApp({ shareStore, resourceStore, objectStorage });
+
+  const createShareResponse = await request(app)
+    .post("/api/shares")
+    .send({ name: "Real upload room", accessMode: "upload", maxResourceBytes: 1024 })
+    .expect(201);
+
+  const fileBytes = Buffer.from("hello from multipart upload");
+  const uploadResponse = await request(app)
+    .post(`/api/shares/${createShareResponse.body.share.id}/resources`)
+    .attach("file", fileBytes, {
+      filename: "hello.txt",
+      contentType: "text/plain"
+    })
+    .field("metadata", "first real file")
+    .expect(201);
+
+  const resource = uploadResponse.body.resource;
+  assert.match(resource.id, /^res_/);
+  assert.equal(resource.originalName, "hello.txt");
+  assert.equal(resource.mimeType, "text/plain");
+  assert.equal(resource.size, fileBytes.length);
+  assert.equal(resource.previewType, "text");
+  assert.equal(resource.metadata.note, "first real file");
+
+  const storedBytes = await objectStorage.get(resource.storageKey);
+  assert.equal(storedBytes.toString("utf8"), fileBytes.toString("utf8"));
 });
 
 test("POST /api/shares/:shareId/resources rejects readonly links", async () => {
