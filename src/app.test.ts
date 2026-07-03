@@ -19,6 +19,16 @@ test("GET /health returns service health", async () => {
   assert.deepEqual(response.body, { ok: true });
 });
 
+test("GET / and /s/:shareId serve the browser UI", async () => {
+  const app = createApp();
+
+  const rootResponse = await request(app).get("/").expect(200);
+  const shareResponse = await request(app).get("/s/share_demo").expect(200);
+
+  assert.match(rootResponse.text, /Temporary resource share/);
+  assert.match(shareResponse.text, /Temporary resource share/);
+});
+
 test("POST /api/shares creates an upload share", async () => {
   const app = createApp({ shareStore: createMemoryShareStore() });
 

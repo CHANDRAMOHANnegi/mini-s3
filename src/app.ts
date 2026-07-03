@@ -103,7 +103,9 @@ export function createApp(dependencies: AppDependencies = {}) {
   const resourceStore = dependencies.resourceStore || createMemoryResourceStore();
   const objectStorage =
     dependencies.objectStorage || createLocalObjectStorage({ rootDir: path.join(process.cwd(), "storage", "objects") });
+  const publicDir = path.join(process.cwd(), "public");
 
+  app.use(express.static(publicDir));
   app.use(express.json({ limit: "1mb" }));
 
   app.get("/health", (_req, res) => {
@@ -112,6 +114,10 @@ export function createApp(dependencies: AppDependencies = {}) {
 
   app.get("/debug/sample-share", (_req, res) => {
     res.json({ share: createShare() });
+  });
+
+  app.get("/s/:shareId", (_req, res) => {
+    res.sendFile(path.join(publicDir, "index.html"));
   });
 
   app.post("/api/shares", async (req, res) => {
