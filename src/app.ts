@@ -2,7 +2,7 @@ import path from "node:path";
 import express, { type ErrorRequestHandler, type RequestHandler } from "express";
 import multer from "multer";
 import { canAccess } from "./domain/permissions.js";
-import { createResource } from "./domain/resources.js";
+import { createResource, type Resource } from "./domain/resources.js";
 import { createShare } from "./domain/shares.js";
 import { createLocalObjectStorage } from "./storage/localStorage.js";
 import type { ObjectStorage } from "./storage/storage.js";
@@ -58,6 +58,14 @@ function numberField(body: Record<string, unknown>, key: string, fallback: numbe
 
 function routeParam(value: string | string[]): string {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function canPreview(resource: Resource): boolean {
+  return resource.previewType !== "binary";
+}
+
+function quotedFilename(name: string): string {
+  return name.replaceAll("\\", "_").replaceAll('"', "'").replace(/[\r\n]/g, "_");
 }
 
 export function createApp(dependencies: AppDependencies = {}) {
@@ -171,6 +179,74 @@ export function createApp(dependencies: AppDependencies = {}) {
     res.type(resource.mimeType);
     res.setHeader("Content-Length", String(resource.size));
     res.attachment(resource.originalName);
+    stream.pipe(res);
+  });
+
+  app.get("/api/shares/:shareId/resources/:resourceId/preview", async (req, res, next) => {
+    const share = await shareStore.findById(routeParam(req.params.shareId));
+
+    if (!share) {
+      res.status(404).json({
+        error: {
+          code: "SHARE_NOT_FOUND",
+          message: "Share link not found."
+        }
+      });
+      return;
+    }
+
+    if (!canAccess(share.accessMode, "preview")) {
+      res.status(403).json({
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "This share link does not allow previews."
+        }
+      });
+      return;
+    }
+
+    const resource = await resourceStore.findById(routeParam(req.params.resourceId));
+
+    if (!resource || resource.shareId !== share.id || resource.deletedAt) {
+      res.status(404).json({
+        error: {
+          code: "RESOURCE_NOT_FOUND",
+          message: "Resource not found in this share."
+        }
+      });
+      return;
+    }
+
+    if (!canPreview(resource)) {
+      res.status(415).json({
+        error: {
+          code: "PREVIEW_UNSUPPORTED",
+          message: "This resource type cannot be previewed."
+        }
+      });
+      return;
+    }
+
+    if (!(await objectStorage.exists(resource.storageKey))) {
+      res.status(404).json({
+        error: {
+          code: "RESOURCE_BYTES_NOT_FOUND",
+          message: "Resource bytes are missing from storage."
+        }
+      });
+      return;
+    }
+
+    const stream = objectStorage.getStream(resource.storageKey);
+    stream.on("error", next);
+
+    res.type(resource.mimeType);
+    res.setHeader("Content-Length", String(resource.size));
+    res.setHeader("Content-Disposition", `inline; filename="${quotedFilename(resource.originalName)}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    if (resource.previewType === "html") {
+      res.setHeader("Content-Security-Policy", "sandbox");
+    }
     stream.pipe(res);
   });
 

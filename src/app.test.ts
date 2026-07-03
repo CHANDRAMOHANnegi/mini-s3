@@ -222,6 +222,73 @@ test("GET /api/shares/:shareId/resources/:resourceId/download rejects resources 
   assert.equal(response.body.error.code, "RESOURCE_NOT_FOUND");
 });
 
+test("GET /api/shares/:shareId/resources/:resourceId/preview streams previewable bytes inline", async () => {
+  const shareStore = createMemoryShareStore();
+  const resourceStore = createMemoryResourceStore();
+  const storageRoot = await mkdtemp(path.join(tmpdir(), "mini-s3-preview-"));
+  const objectStorage = createLocalObjectStorage({ rootDir: storageRoot });
+  const app = createApp({ shareStore, resourceStore, objectStorage });
+
+  const createShareResponse = await request(app)
+    .post("/api/shares")
+    .send({ name: "Preview room", accessMode: "readonly", maxResourceBytes: 1024 })
+    .expect(201);
+
+  const share = createShareResponse.body.share;
+  const bytes = Buffer.from("preview me inline");
+  const resource = createResource({
+    shareId: share.id,
+    originalName: "preview.txt",
+    mimeType: "text/plain",
+    size: bytes.length,
+    bytes,
+    expiresAt: share.expiresAt
+  });
+  await objectStorage.put(resource.storageKey, bytes);
+  await resourceStore.create(resource);
+
+  const response = await request(app)
+    .get(`/api/shares/${share.id}/resources/${resource.id}/preview`)
+    .expect(200);
+
+  assert.equal(response.text, "preview me inline");
+  assert.match(response.headers["content-type"], /^text\/plain/);
+  assert.match(response.headers["content-disposition"], /inline; filename="preview.txt"/);
+  assert.equal(response.headers["x-content-type-options"], "nosniff");
+});
+
+test("GET /api/shares/:shareId/resources/:resourceId/preview rejects binary resources", async () => {
+  const shareStore = createMemoryShareStore();
+  const resourceStore = createMemoryResourceStore();
+  const storageRoot = await mkdtemp(path.join(tmpdir(), "mini-s3-binary-preview-"));
+  const objectStorage = createLocalObjectStorage({ rootDir: storageRoot });
+  const app = createApp({ shareStore, resourceStore, objectStorage });
+
+  const createShareResponse = await request(app)
+    .post("/api/shares")
+    .send({ name: "Binary room", accessMode: "readonly", maxResourceBytes: 1024 })
+    .expect(201);
+
+  const share = createShareResponse.body.share;
+  const bytes = Buffer.from([0, 1, 2, 3]);
+  const resource = createResource({
+    shareId: share.id,
+    originalName: "archive.bin",
+    mimeType: "application/octet-stream",
+    size: bytes.length,
+    bytes,
+    expiresAt: share.expiresAt
+  });
+  await objectStorage.put(resource.storageKey, bytes);
+  await resourceStore.create(resource);
+
+  const response = await request(app)
+    .get(`/api/shares/${share.id}/resources/${resource.id}/preview`)
+    .expect(415);
+
+  assert.equal(response.body.error.code, "PREVIEW_UNSUPPORTED");
+});
+
 test("POST /api/shares/:shareId/resources rejects readonly links", async () => {
   const app = createApp({ shareStore: createMemoryShareStore(), resourceStore: createMemoryResourceStore() });
 
