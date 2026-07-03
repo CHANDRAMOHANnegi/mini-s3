@@ -1,3 +1,6 @@
+node_modules/
+dist/
+
 storage/shares.json
 storage/objects/**
 storage/meta/**
