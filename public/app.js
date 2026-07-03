@@ -83,12 +83,14 @@ async function ensureShare(shareId) {
   saveAdminToken(token);
 
   try {
+    // First try to open the room. If it exists, the URL is enough.
     const payload = await jsonRequest(`/api/shares/${shareId}/resources`);
     state.share = payload.share;
     state.resources = payload.resources;
   } catch (error) {
     if (!String(error.message).includes("Share link not found")) throw error;
 
+    // Codeshare-style behavior: a clean /s/share_xxx URL creates its own temporary room.
     const payload = await jsonRequest("/api/shares", {
       method: "POST",
       headers: adminHeaders(),
@@ -181,6 +183,7 @@ async function boot() {
 
   const shareId = currentPathShareId() || randomShareId();
   if (!currentPathShareId()) {
+    // The browser URL is the share link. There is no separate create step.
     history.replaceState(null, "", `/s/${shareId}`);
   }
 

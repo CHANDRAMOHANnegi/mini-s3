@@ -4,7 +4,7 @@ We simplified the product model.
 
 ## New Rule
 
-There is one clean link:
+There is one clean URL:
 
 ```txt
 /s/share_xxx
@@ -26,7 +26,7 @@ Without login, the server cannot know who is the owner and who is a guest.
 
 So this is not a user-permission product.
 
-It is a temporary link-sharing product.
+It is a temporary URL-sharing product.
 
 ## Why Delete Is Acceptable Here
 
@@ -49,13 +49,13 @@ unguessable share ids
 short expiry
 max file size
 cleanup job
-optional admin token for creating links
+optional admin token for reserving new URLs
 ```
 
 ## UI Change
 
 There is no separate create-share form now.
 
-Opening the app gives a clean link.
+Opening the app gives a clean `/s/share_xxx` URL.
 
 Opening a new `/s/share_xxx` link can create that share automatically.

@@ -5,9 +5,10 @@ A small S3-like temporary resource sharing service.
 The product idea is simple:
 
 ```txt
-create a share link
-  -> send URL to someone
-  -> they upload, preview, download, or delete from that link
+open Mini S3
+  -> browser becomes /s/share_xxx
+  -> send that URL to someone
+  -> everyone with it can upload, preview, download, or delete
 ```
 
 No guest login. The URL is the capability.
@@ -40,7 +41,7 @@ npm start     # run compiled server
 ## What Works Now
 
 ```txt
-share creation
+link-first share rooms
 clean /s/share_xxx links
 full resource access for everyone with the link
 browser UI
@@ -53,7 +54,7 @@ expiry enforcement
 local object storage
 JSON metadata persistence
 cleanup scheduler for expired resources
-optional admin token for share creation
+optional admin token for reserving new share URLs
 ```
 
 ## Link Behavior
@@ -71,7 +72,7 @@ Safety comes from short expiry, random unguessable ids, file-size limits, and cl
 
 ## API
 
-Create a share:
+Create or reserve a share URL:
 
 ```http
 POST /api/shares
@@ -134,8 +135,8 @@ x-admin-token: <token>
 ## Browser Routes
 
 ```txt
-/           create/open share UI
-/s/:shareId open or create a share UI
+/           redirects to a new /s/share_xxx URL
+/s/:shareId the share room URL
 ```
 
 Example:
@@ -253,7 +254,7 @@ Next production steps:
 Postgres for metadata
 object storage provider: S3/R2/MinIO
 rate limiting
-admin token for creating shares
+admin token for reserving new share URLs
 Dockerfile
 deployment docs
 structured logs
