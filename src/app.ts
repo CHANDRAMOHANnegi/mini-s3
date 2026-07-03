@@ -120,6 +120,60 @@ export function createApp(dependencies: AppDependencies = {}) {
     res.json({ share, resources });
   });
 
+  app.get("/api/shares/:shareId/resources/:resourceId/download", async (req, res, next) => {
+    const share = await shareStore.findById(routeParam(req.params.shareId));
+
+    if (!share) {
+      res.status(404).json({
+        error: {
+          code: "SHARE_NOT_FOUND",
+          message: "Share link not found."
+        }
+      });
+      return;
+    }
+
+    if (!canAccess(share.accessMode, "download")) {
+      res.status(403).json({
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "This share link does not allow downloads."
+        }
+      });
+      return;
+    }
+
+    const resource = await resourceStore.findById(routeParam(req.params.resourceId));
+
+    if (!resource || resource.shareId !== share.id || resource.deletedAt) {
+      res.status(404).json({
+        error: {
+          code: "RESOURCE_NOT_FOUND",
+          message: "Resource not found in this share."
+        }
+      });
+      return;
+    }
+
+    if (!(await objectStorage.exists(resource.storageKey))) {
+      res.status(404).json({
+        error: {
+          code: "RESOURCE_BYTES_NOT_FOUND",
+          message: "Resource bytes are missing from storage."
+        }
+      });
+      return;
+    }
+
+    const stream = objectStorage.getStream(resource.storageKey);
+    stream.on("error", next);
+
+    res.type(resource.mimeType);
+    res.setHeader("Content-Length", String(resource.size));
+    res.attachment(resource.originalName);
+    stream.pipe(res);
+  });
+
   app.post("/api/shares/:shareId/resources", uploadParser.single("file"), async (req, res) => {
     const share = await shareStore.findById(routeParam(req.params.shareId));
 

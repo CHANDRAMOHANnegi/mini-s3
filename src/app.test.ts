@@ -160,6 +160,68 @@ test("POST /api/shares/:shareId/resources uploads file bytes", async () => {
   assert.equal(storedBytes.toString("utf8"), fileBytes.toString("utf8"));
 });
 
+test("GET /api/shares/:shareId/resources/:resourceId/download streams uploaded bytes", async () => {
+  const shareStore = createMemoryShareStore();
+  const resourceStore = createMemoryResourceStore();
+  const storageRoot = await mkdtemp(path.join(tmpdir(), "mini-s3-download-"));
+  const objectStorage = createLocalObjectStorage({ rootDir: storageRoot });
+  const app = createApp({ shareStore, resourceStore, objectStorage });
+
+  const createShareResponse = await request(app)
+    .post("/api/shares")
+    .send({ name: "Download room", accessMode: "readonly", maxResourceBytes: 1024 })
+    .expect(201);
+
+  const share = createShareResponse.body.share;
+  const bytes = Buffer.from("download me please");
+  const resource = createResource({
+    shareId: share.id,
+    originalName: "download.txt",
+    mimeType: "text/plain",
+    size: bytes.length,
+    bytes,
+    expiresAt: share.expiresAt
+  });
+  await objectStorage.put(resource.storageKey, bytes);
+  await resourceStore.create(resource);
+
+  const response = await request(app)
+    .get(`/api/shares/${share.id}/resources/${resource.id}/download`)
+    .expect(200);
+
+  assert.equal(response.text, "download me please");
+  assert.match(response.headers["content-type"], /^text\/plain/);
+  assert.match(response.headers["content-disposition"], /attachment; filename="download.txt"/);
+});
+
+test("GET /api/shares/:shareId/resources/:resourceId/download rejects resources from another share", async () => {
+  const shareStore = createMemoryShareStore();
+  const resourceStore = createMemoryResourceStore();
+  const storageRoot = await mkdtemp(path.join(tmpdir(), "mini-s3-wrong-share-"));
+  const objectStorage = createLocalObjectStorage({ rootDir: storageRoot });
+  const app = createApp({ shareStore, resourceStore, objectStorage });
+
+  const firstShareResponse = await request(app).post("/api/shares").send({ name: "First" }).expect(201);
+  const secondShareResponse = await request(app).post("/api/shares").send({ name: "Second" }).expect(201);
+  const secondShare = secondShareResponse.body.share;
+  const resource = createResource({
+    shareId: secondShare.id,
+    originalName: "secret.txt",
+    mimeType: "text/plain",
+    size: 6,
+    bytes: Buffer.from("secret"),
+    expiresAt: secondShare.expiresAt
+  });
+  await objectStorage.put(resource.storageKey, Buffer.from("secret"));
+  await resourceStore.create(resource);
+
+  const response = await request(app)
+    .get(`/api/shares/${firstShareResponse.body.share.id}/resources/${resource.id}/download`)
+    .expect(404);
+
+  assert.equal(response.body.error.code, "RESOURCE_NOT_FOUND");
+});
+
 test("POST /api/shares/:shareId/resources rejects readonly links", async () => {
   const app = createApp({ shareStore: createMemoryShareStore(), resourceStore: createMemoryResourceStore() });
 
