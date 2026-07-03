@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ephemeral Resource Share UI Preview</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7f5;
+        --surface: #ffffff;
+        --ink: #171916;
+        --muted: #636861;
+        --line: #d9ddd5;
+        --accent: #146452;
+        --accent-soft: #e5f1ed;
+        --warn: #9a5b12;
+        --danger: #9d3030;
+        --shadow: 0 18px 50px rgba(20, 28, 22, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 15px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        min-height: 38px;
+        border: 0;
+        border-radius: 6px;
+        padding: 0 13px;
+        background: var(--accent);
+        color: #fff;
+        font-weight: 750;
+        cursor: pointer;
+      }
+
+      button.secondary {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+      }
+
+      button.danger {
+        background: var(--danger);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        min-height: 40px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px 10px;
+        background: #fff;
+        color: var(--ink);
+      }
+
+      textarea {
+        min-height: 92px;
+        resize: vertical;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 300px 1fr;
+        min-height: 100vh;
+      }
+
+      aside {
+        border-right: 1px solid var(--line);
+        background: #fbfbf9;
+        padding: 22px;
+      }
+
+      main {
+        padding: 28px;
+      }
+
+      .brand {
+        margin-bottom: 28px;
+      }
+
+      .eyebrow {
+        margin: 0 0 4px;
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin-bottom: 8px;
+        font-size: 28px;
+        line-height: 1.1;
+      }
+
+      h2 {
+        margin-bottom: 14px;
+        font-size: 18px;
+      }
+
+      h3 {
+        margin-bottom: 8px;
+        font-size: 15px;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .stepList {
+        display: grid;
+        gap: 8px;
+        margin-top: 18px;
+      }
+
+      .step {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px;
+        background: #fff;
+      }
+
+      .dot {
+        display: grid;
+        width: 26px;
+        height: 26px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 850;
+        flex: 0 0 auto;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(320px, 430px) 1fr;
+        gap: 18px;
+        align-items: start;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        padding: 18px;
+        box-shadow: var(--shadow);
+      }
+
+      .form {
+        display: grid;
+        gap: 14px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .shareLink {
+        display: grid;
+        gap: 8px;
+        margin-top: 14px;
+        border: 1px solid #b9d7cd;
+        border-radius: 8px;
+        padding: 12px;
+        background: #f3fbf8;
+      }
+
+      .codeLine {
+        overflow-wrap: anywhere;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 14px;
+      }
+
+      .badgeRow {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .badge {
+        border: 1px solid #c8dcd5;
+        border-radius: 999px;
+        padding: 4px 9px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .badge.warn {
+        border-color: #e5c892;
+        background: #fff7e7;
+        color: var(--warn);
+      }
+
+      .uploadZone {
+        display: grid;
+        place-items: center;
+        min-height: 132px;
+        border: 1px dashed #aeb7ad;
+        border-radius: 8px;
+        background: #fbfcfb;
+        text-align: center;
+        padding: 18px;
+      }
+
+      .resourceGrid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .resource {
+        display: grid;
+        grid-template-columns: 44px 1fr auto;
+        gap: 12px;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px;
+        background: #fff;
+      }
+
+      .icon {
+        display: grid;
+        width: 44px;
+        height: 44px;
+        place-items: center;
+        border-radius: 8px;
+        background: #eef2ee;
+        color: var(--accent);
+        font-weight: 850;
+      }
+
+      .resourceTitle {
+        font-weight: 800;
+        overflow-wrap: anywhere;
+      }
+
+      .meta {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .preview {
+        display: grid;
+        gap: 12px;
+      }
+
+      .previewBox {
+        display: grid;
+        min-height: 240px;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: linear-gradient(135deg, #f8faf8, #eef5f2);
+        overflow: hidden;
+      }
+
+      .imagePreview {
+        width: 100%;
+        height: 240px;
+        background:
+          linear-gradient(45deg, rgba(20, 100, 82, 0.2), rgba(255, 255, 255, 0)),
+          linear-gradient(135deg, #7fb59d, #e4ca7a);
+      }
+
+      .textPreview {
+        width: 100%;
+        height: 240px;
+        overflow: auto;
+        padding: 16px;
+        background: #101410;
+        color: #dce9df;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+      }
+
+      .timeline {
+        display: grid;
+        gap: 9px;
+      }
+
+      .event {
+        border-left: 3px solid var(--accent);
+        padding-left: 10px;
+      }
+
+      @media (max-width: 980px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        aside {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 620px) {
+        main,
+        aside {
+          padding: 16px;
+        }
+
+        .row,
+        .resource {
+          grid-template-columns: 1fr;
+        }
+
+        h1 {
+          font-size: 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside>
+        <div class="brand">
+          <p class="eyebrow">Phase 0 Preview</p>
+          <h1>TempShare</h1>
+          <p class="muted">No-login temporary resource sharing with capability links.</p>
+        </div>
+
+        <h2>Flow</h2>
+        <div class="stepList">
+          <div class="step"><span class="dot">1</span><span>Create temporary link</span></div>
+          <div class="step"><span class="dot">2</span><span>Choose permissions</span></div>
+          <div class="step"><span class="dot">3</span><span>Guest uploads resources</span></div>
+          <div class="step"><span class="dot">4</span><span>Preview or download</span></div>
+          <div class="step"><span class="dot">5</span><span>Auto-delete on expiry</span></div>
+        </div>
+      </aside>
+
+      <main>
+        <div class="layout">
+          <section class="panel">
+            <p class="eyebrow">Owner View</p>
+            <h2>Create Share Link</h2>
+            <div class="form">
+              <label>
+                Share name
+                <input id="shareName" value="Client resource drop" />
+              </label>
+
+              <label>
+                Link permission
+                <select id="permissionMode">
+                  <option value="readonly">Readonly: preview and download</option>
+                  <option value="upload" selected>Upload: add, preview, download</option>
+                  <option value="edit">Edit: upload, preview, download, delete</option>
+                </select>
+              </label>
+
+              <div class="row">
+                <label>
+                  Expiry
+                  <select id="expiry">
+                    <option>1 hour</option>
+                    <option selected>24 hours</option>
+                    <option>3 days</option>
+                    <option>7 days</option>
+                  </select>
+                </label>
+
+                <label>
+                  Max resource size
+                  <select id="maxSize">
+                    <option>25 MB</option>
+                    <option selected>100 MB</option>
+                    <option>500 MB</option>
+                    <option>1 GB</option>
+                  </select>
+                </label>
+              </div>
+
+              <label>
+                Optional note shown to guests
+                <textarea id="note">Upload the requested files here. This link expires automatically.</textarea>
+              </label>
+
+              <div class="actions">
+                <button id="createLink" type="button">Create link</button>
+                <button class="secondary" id="revokeLink" type="button">Revoke</button>
+              </div>
+            </div>
+
+            <div class="shareLink">
+              <strong>Generated share URL</strong>
+              <div class="codeLine" id="shareUrl">https://tempshare.local/s/r7X9Kp2</div>
+              <div class="badgeRow" id="permissionBadges"></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="toolbar">
+              <div>
+                <p class="eyebrow">Guest View</p>
+                <h2 id="guestTitle">Client resource drop</h2>
+                <p class="muted" id="guestNote">Upload the requested files here. This link expires automatically.</p>
+              </div>
+              <span class="badge warn" id="expiryBadge">Expires in 24 hours</span>
+            </div>
+
+            <div class="uploadZone" id="uploadZone">
+              <div>
+                <strong>Drop files here</strong>
+                <p class="muted">Video, audio, images, PDFs, docs, text, HTML, emoji text, or unknown binaries.</p>
+                <button type="button" id="fakeUpload">Simulate upload</button>
+              </div>
+            </div>
+
+            <div style="height: 16px"></div>
+
+            <div class="resourceGrid" id="resourceGrid"></div>
+          </section>
+
+          <section class="panel">
+            <p class="eyebrow">Preview Surface</p>
+            <h2 id="previewTitle">mountain-photo.jpg</h2>
+            <div class="preview">
+              <div class="previewBox" id="previewBox"></div>
+              <div class="actions">
+                <button type="button" id="downloadButton">Download</button>
+                <button class="danger" type="button" id="deleteButton">Delete</button>
+              </div>
+              <p class="muted" id="previewHelp">Preview changes based on resource type. HTML should be escaped or sandboxed.</p>
+            </div>
+          </section>
+
+          <section class="panel">
+            <p class="eyebrow">System Events</p>
+            <h2>Audit Trail</h2>
+            <div class="timeline" id="auditTrail"></div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      const resources = [
+        { id: "img", icon: "IMG", name: "mountain-photo.jpg", type: "image/jpeg", size: "2.4 MB", preview: "image" },
+        { id: "vid", icon: "VID", name: "demo-walkthrough.mp4", type: "video/mp4", size: "74 MB", preview: "video" },
+        { id: "pdf", icon: "PDF", name: "signed-agreement.pdf", type: "application/pdf", size: "840 KB", preview: "pdf" },
+        { id: "txt", icon: "TXT", name: "notes-and-emoji.txt", type: "text/plain", size: "3 KB", preview: "text" },
+        { id: "html", icon: "WEB", name: "landing-page.html", type: "text/html", size: "18 KB", preview: "html" }
+      ];
+
+      const state = {
+        mode: "upload",
+        selected: resources[0],
+        revoked: false,
+        uploadedCount: 0
+      };
+
+      const permissionMap = {
+        readonly: ["preview", "download"],
+        upload: ["upload", "preview", "download"],
+        edit: ["upload", "preview", "download", "delete"]
+      };
+
+      const shareName = document.querySelector("#shareName");
+      const permissionMode = document.querySelector("#permissionMode");
+      const expiry = document.querySelector("#expiry");
+      const note = document.querySelector("#note");
+      const guestTitle = document.querySelector("#guestTitle");
+      const guestNote = document.querySelector("#guestNote");
+      const expiryBadge = document.querySelector("#expiryBadge");
+      const permissionBadges = document.querySelector("#permissionBadges");
+      const resourceGrid = document.querySelector("#resourceGrid");
+      const previewTitle = document.querySelector("#previewTitle");
+      const previewBox = document.querySelector("#previewBox");
+      const uploadZone = document.querySelector("#uploadZone");
+      const deleteButton = document.querySelector("#deleteButton");
+      const downloadButton = document.querySelector("#downloadButton");
+      const auditTrail = document.querySelector("#auditTrail");
+
+      function can(action) {
+        return !state.revoked && permissionMap[state.mode].includes(action);
+      }
+
+      function addEvent(text) {
+        const time = new Date().toLocaleTimeString();
+        auditTrail.insertAdjacentHTML("afterbegin", `<div class="event"><strong>${text}</strong><div class="meta">${time}</div></div>`);
+      }
+
+      function renderPermissions() {
+        const labels = permissionMap[state.mode].map((permission) => `<span class="badge">${permission}</span>`);
+        if (state.revoked) labels.push(`<span class="badge warn">revoked</span>`);
+        permissionBadges.innerHTML = labels.join("");
+      }
+
+      function renderResources() {
+        resourceGrid.innerHTML = resources.map((resource) => `
+          <article class="resource">
+            <div class="icon">${resource.icon}</div>
+            <div>
+              <div class="resourceTitle">${resource.name}</div>
+              <div class="meta">${resource.type} · ${resource.size} · preview: ${resource.preview}</div>
+            </div>
+            <button class="secondary" data-id="${resource.id}" type="button">Preview</button>
+          </article>
+        `).join("");
+      }
+
+      function renderPreview() {
+        const resource = state.selected;
+        previewTitle.textContent = resource.name;
+        downloadButton.disabled = !can("download");
+        deleteButton.disabled = !can("delete");
+
+        if (resource.preview === "image") {
+          previewBox.innerHTML = `<div class="imagePreview" aria-label="image preview"></div>`;
+        } else if (resource.preview === "video") {
+          previewBox.innerHTML = `<div><strong>Video player</strong><p class="muted">Browser would render &lt;video controls&gt; here.</p></div>`;
+        } else if (resource.preview === "pdf") {
+          previewBox.innerHTML = `<div><strong>PDF preview</strong><p class="muted">Browser PDF viewer or embedded preview.</p></div>`;
+        } else if (resource.preview === "html") {
+          previewBox.innerHTML = `<pre class="textPreview">&lt;main&gt;\n  &lt;h1&gt;Uploaded HTML&lt;/h1&gt;\n  &lt;script&gt;blocked_or_sandboxed()&lt;/script&gt;\n&lt;/main&gt;</pre>`;
+        } else {
+          previewBox.innerHTML = `<pre class="textPreview">Hello from a text resource.\nEmoji supported: hello, नमस्ते, :) \n\nPreview is escaped so text cannot run as app code.</pre>`;
+        }
+      }
+
+      function render() {
+        state.mode = permissionMode.value;
+        guestTitle.textContent = shareName.value || "Untitled share";
+        guestNote.textContent = note.value || "No note.";
+        expiryBadge.textContent = state.revoked ? "Revoked" : `Expires in ${expiry.value}`;
+        uploadZone.style.display = can("upload") ? "grid" : "none";
+        renderPermissions();
+        renderResources();
+        renderPreview();
+      }
+
+      document.querySelector("#createLink").addEventListener("click", () => {
+        state.revoked = false;
+        render();
+        addEvent(`Share link created with ${state.mode} permission`);
+      });
+
+      document.querySelector("#revokeLink").addEventListener("click", () => {
+        state.revoked = true;
+        render();
+        addEvent("Share link revoked");
+      });
+
+      document.querySelector("#fakeUpload").addEventListener("click", () => {
+        if (!can("upload")) return;
+        state.uploadedCount += 1;
+        addEvent(`Resource uploaded: sample-${state.uploadedCount}.bin`);
+      });
+
+      resourceGrid.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-id]");
+        if (!button) return;
+        state.selected = resources.find((resource) => resource.id === button.dataset.id);
+        renderPreview();
+        addEvent(`Preview opened: ${state.selected.name}`);
+      });
+
+      downloadButton.addEventListener("click", () => {
+        if (can("download")) addEvent(`Downloaded: ${state.selected.name}`);
+      });
+
+      deleteButton.addEventListener("click", () => {
+        if (can("delete")) addEvent(`Deleted: ${state.selected.name}`);
+      });
+
+      [shareName, permissionMode, expiry, note].forEach((element) => element.addEventListener("input", render));
+      render();
+      addEvent("Preview loaded");
+    </script>
+  </body>
+</html>

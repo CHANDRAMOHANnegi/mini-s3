@@ -50,6 +50,16 @@ http://localhost:8787
 
 Create a share, copy the generated URL, and send it to someone on the same network or hosted domain.
 
+## Planning Preview
+
+Open this standalone HTML file to discuss the product UI before changing the real app:
+
+```txt
+docs/previews/ui-preview.html
+```
+
+It previews the owner flow, guest upload flow, resource list, permissions, preview surface, download/delete actions, and audit trail.
+
 ## Product Direction
 
 This should feel like Codeshare or document link sharing, not like a login-heavy storage dashboard.
