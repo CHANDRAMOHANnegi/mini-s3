@@ -1,0 +1,5 @@
+storage/shares.json
+storage/objects/**
+storage/meta/**
+!storage/objects/.gitkeep
+!storage/meta/.gitkeep
