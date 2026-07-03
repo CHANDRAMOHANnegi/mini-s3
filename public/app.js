@@ -3,6 +3,13 @@ const state = {
   resources: []
 };
 
+const appOrigin = `${window.location.protocol}//${window.location.hostname}:8787`;
+const isExpressApp = window.location.port === "8787";
+
+if (!isExpressApp) {
+  window.location.replace(appOrigin);
+}
+
 const healthBadge = document.querySelector("#healthBadge");
 const createShareForm = document.querySelector("#createShareForm");
 const createdShare = document.querySelector("#createdShare");
