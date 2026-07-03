@@ -16,6 +16,7 @@ export type Share = {
 };
 
 export type CreateShareInput = {
+  id?: unknown;
   name?: unknown;
   accessMode?: unknown;
   expiresInHours?: unknown;
@@ -26,6 +27,7 @@ export type CreateShareInput = {
 const defaultExpiryHours = 24;
 const maxExpiryHours = 24 * 30;
 const defaultMaxResourceBytes = 100 * 1024 * 1024;
+const shareIdPattern = /^share_[A-Za-z0-9_-]{8,80}$/;
 
 export function createId(prefix: string): string {
   return `${prefix}_${randomBytes(12).toString("base64url")}`;
@@ -36,8 +38,12 @@ function positiveNumber(value: unknown, fallback: number): number {
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : fallback;
 }
 
+function shareId(value: unknown): string {
+  return typeof value === "string" && shareIdPattern.test(value) ? value : createId("share");
+}
+
 export function createShare(input: CreateShareInput = {}, now = new Date()): Share {
-  const accessMode = normalizeAccessMode(input.accessMode);
+  const accessMode = normalizeAccessMode("edit");
   const requestedExpiryHours = positiveNumber(input.expiresInHours, defaultExpiryHours);
   const expiresInHours = Math.min(requestedExpiryHours, maxExpiryHours);
   const maxResourceBytes = positiveNumber(input.maxResourceBytes, defaultMaxResourceBytes);
@@ -45,7 +51,7 @@ export function createShare(input: CreateShareInput = {}, now = new Date()): Sha
   const timestamp = now.toISOString();
 
   return {
-    id: createId("share"),
+    id: shareId(input.id),
     name: String(input.name || "Shared resources"),
     accessMode,
     permissions: permissionsForMode(accessMode),

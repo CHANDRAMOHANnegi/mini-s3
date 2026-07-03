@@ -17,55 +17,31 @@
           <span id="healthBadge" class="badge">checking</span>
         </div>
 
-        <form id="createShareForm" class="stack">
-          <label>
-            Share name
-            <input name="name" value="Shared resources" autocomplete="off" />
-          </label>
-
-          <div class="grid">
-            <label>
-              Permission
-              <select name="accessMode">
-                <option value="upload">Upload</option>
-                <option value="readonly">Readonly</option>
-                <option value="edit">Edit</option>
-              </select>
-            </label>
-            <label>
-              Expiry hours
-              <input name="expiresInHours" type="number" min="1" max="720" value="24" />
-            </label>
-            <label>
-              Max file MB
-              <input name="maxResourceMb" type="number" min="1" value="100" />
-            </label>
+        <div class="stack">
+          <div class="result">
+            <span>Current share link</span>
+            <a id="currentShareLink" href="#"></a>
           </div>
 
-          <button type="submit">Create share</button>
-        </form>
+          <label>
+            Admin token
+            <input id="adminTokenInput" type="password" autocomplete="off" placeholder="only if server requires it" />
+          </label>
 
-        <div id="createdShare" class="result" hidden>
-          <span>Share URL</span>
-          <a id="createdShareLink" href="#"></a>
+          <button id="newShareButton" type="button">New link</button>
         </div>
       </section>
 
       <section class="panel share-panel">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Open share</p>
-            <h2 id="shareTitle">No share selected</h2>
+            <p class="eyebrow">Shared room</p>
+            <h2 id="shareTitle">Opening share</h2>
           </div>
-          <span id="permissionBadge" class="badge">none</span>
+          <span id="permissionBadge" class="badge">full access</span>
         </div>
 
-        <form id="openShareForm" class="inline-form">
-          <input name="shareId" placeholder="share id" autocomplete="off" />
-          <button type="submit">Open</button>
-        </form>
-
-        <form id="uploadForm" class="upload-box" hidden>
+        <form id="uploadForm" class="upload-box">
           <input id="fileInput" name="file" type="file" />
           <button type="submit">Upload file</button>
         </form>

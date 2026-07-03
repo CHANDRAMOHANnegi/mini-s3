@@ -11,10 +11,9 @@ if (!isExpressApp) {
 }
 
 const healthBadge = document.querySelector("#healthBadge");
-const createShareForm = document.querySelector("#createShareForm");
-const createdShare = document.querySelector("#createdShare");
-const createdShareLink = document.querySelector("#createdShareLink");
-const openShareForm = document.querySelector("#openShareForm");
+const currentShareLink = document.querySelector("#currentShareLink");
+const adminTokenInput = document.querySelector("#adminTokenInput");
+const newShareButton = document.querySelector("#newShareButton");
 const shareTitle = document.querySelector("#shareTitle");
 const permissionBadge = document.querySelector("#permissionBadge");
 const uploadForm = document.querySelector("#uploadForm");
@@ -24,6 +23,21 @@ const resourceTemplate = document.querySelector("#resourceTemplate");
 
 function apiErrorMessage(payload) {
   return payload?.error?.message || payload?.error?.code || "Request failed";
+}
+
+function saveAdminToken(token) {
+  if (token) {
+    window.localStorage.setItem("miniS3AdminToken", token);
+  }
+}
+
+function adminToken() {
+  return window.localStorage.getItem("miniS3AdminToken") || "";
+}
+
+function adminHeaders() {
+  const token = adminTokenInput.value.trim() || adminToken();
+  return token ? { "x-admin-token": token } : {};
 }
 
 async function jsonRequest(url, options = {}) {
@@ -43,6 +57,17 @@ async function jsonRequest(url, options = {}) {
   return payload;
 }
 
+function randomShareId() {
+  const bytes = new Uint8Array(12);
+  window.crypto.getRandomValues(bytes);
+  const token = btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+  return `share_${token}`;
+}
+
+function currentPathShareId() {
+  return window.location.pathname.match(/^\/s\/([^/]+)$/)?.[1] || "";
+}
+
 function shareUrl(shareId) {
   return `${window.location.origin}/s/${shareId}`;
 }
@@ -53,13 +78,34 @@ function formatBytes(size) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
+async function ensureShare(shareId) {
+  const token = adminTokenInput.value.trim();
+  saveAdminToken(token);
+
+  try {
+    const payload = await jsonRequest(`/api/shares/${shareId}/resources`);
+    state.share = payload.share;
+    state.resources = payload.resources;
+  } catch (error) {
+    if (!String(error.message).includes("Share link not found")) throw error;
+
+    const payload = await jsonRequest("/api/shares", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({
+        id: shareId,
+        name: "Shared resources",
+        expiresInHours: 24,
+        maxResourceBytes: 100 * 1024 * 1024
+      })
+    });
+    state.share = payload.share;
+    state.resources = [];
+  }
+}
+
 function renderResources() {
   resourceList.textContent = "";
-
-  if (!state.share) {
-    resourceList.textContent = "Open or create a share to see resources.";
-    return;
-  }
 
   if (!state.resources.length) {
     resourceList.textContent = "No resources yet.";
@@ -72,14 +118,11 @@ function renderResources() {
     const downloadUrl = `/api/shares/${state.share.id}/resources/${resource.id}/download`;
 
     node.querySelector("[data-name]").textContent = resource.originalName;
-    node.querySelector("[data-meta]").textContent = `${resource.previewType} • ${formatBytes(resource.size)}`;
+    node.querySelector("[data-meta]").textContent = `${resource.previewType} - ${formatBytes(resource.size)}`;
     node.querySelector("[data-preview]").href = previewUrl;
     node.querySelector("[data-download]").href = downloadUrl;
     node.querySelector("[data-download]").download = resource.originalName;
-
-    const deleteButton = node.querySelector("[data-delete]");
-    deleteButton.hidden = !state.share.permissions.delete;
-    deleteButton.addEventListener("click", async () => {
+    node.querySelector("[data-delete]").addEventListener("click", async () => {
       await fetch(`/api/shares/${state.share.id}/resources/${resource.id}`, { method: "DELETE" });
       await loadShare(state.share.id);
     });
@@ -89,18 +132,10 @@ function renderResources() {
 }
 
 function renderShare() {
-  if (!state.share) {
-    shareTitle.textContent = "No share selected";
-    permissionBadge.textContent = "none";
-    uploadForm.hidden = true;
-    renderResources();
-    return;
-  }
-
+  currentShareLink.href = shareUrl(state.share.id);
+  currentShareLink.textContent = shareUrl(state.share.id);
   shareTitle.textContent = state.share.name;
-  permissionBadge.textContent = state.share.accessMode;
-  uploadForm.hidden = !state.share.permissions.upload;
-  openShareForm.elements.shareId.value = state.share.id;
+  permissionBadge.textContent = "full access";
   renderResources();
 }
 
@@ -111,32 +146,8 @@ async function loadShare(shareId) {
   renderShare();
 }
 
-createShareForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const form = new FormData(createShareForm);
-  const payload = await jsonRequest("/api/shares", {
-    method: "POST",
-    body: JSON.stringify({
-      name: form.get("name"),
-      accessMode: form.get("accessMode"),
-      expiresInHours: Number(form.get("expiresInHours")),
-      maxResourceBytes: Number(form.get("maxResourceMb")) * 1024 * 1024
-    })
-  });
-
-  createdShare.hidden = false;
-  createdShareLink.href = shareUrl(payload.share.id);
-  createdShareLink.textContent = shareUrl(payload.share.id);
-  history.replaceState(null, "", `/s/${payload.share.id}`);
-  await loadShare(payload.share.id);
-});
-
-openShareForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const shareId = openShareForm.elements.shareId.value.trim();
-  if (!shareId) return;
-  history.replaceState(null, "", `/s/${shareId}`);
-  await loadShare(shareId);
+newShareButton.addEventListener("click", () => {
+  window.location.href = `/s/${randomShareId()}`;
 });
 
 uploadForm.addEventListener("submit", async (event) => {
@@ -168,12 +179,13 @@ async function boot() {
     healthBadge.textContent = "offline";
   }
 
-  const shareFromPath = window.location.pathname.match(/^\/s\/([^/]+)$/)?.[1];
-  if (shareFromPath) {
-    await loadShare(shareFromPath);
-  } else {
-    renderShare();
+  const shareId = currentPathShareId() || randomShareId();
+  if (!currentPathShareId()) {
+    history.replaceState(null, "", `/s/${shareId}`);
   }
+
+  await ensureShare(shareId);
+  renderShare();
 }
 
 window.addEventListener("unhandledrejection", (event) => {

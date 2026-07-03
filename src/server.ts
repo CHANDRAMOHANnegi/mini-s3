@@ -7,13 +7,14 @@ import { createJsonFileShareStore } from "./stores/shareStore.js";
 
 const port = Number(process.env.PORT || 8787);
 const cleanupIntervalMs = Number(process.env.CLEANUP_INTERVAL_MS || 5 * 60 * 1000);
+const adminToken = process.env.ADMIN_TOKEN;
 const metadataDir = path.join(process.cwd(), "storage", "meta");
 const shareStore = createJsonFileShareStore(path.join(metadataDir, "shares.json"));
 const resourceStore = createJsonFileResourceStore(path.join(metadataDir, "resources.json"));
 const objectStorage = createLocalObjectStorage({
   rootDir: path.join(process.cwd(), "storage", "objects")
 });
-const app = createApp({ shareStore, resourceStore, objectStorage });
+const app = createApp({ shareStore, resourceStore, objectStorage, adminToken });
 const cleanupScheduler = startResourceCleanupScheduler({
   resourceStore,
   objectStorage,

@@ -5,22 +5,15 @@ import { canAccess, permissionsForMode } from "./permissions.js";
 import { createResource, previewTypeForMime } from "./resources.js";
 import { createShare } from "./shares.js";
 
-test("readonly links can list, preview, and download but cannot upload or delete", () => {
-  const permissions = permissionsForMode("readonly");
+test("active share links have full resource permissions", () => {
+  const permissions = permissionsForMode("edit");
 
   assert.equal(permissions.list, true);
   assert.equal(permissions.preview, true);
   assert.equal(permissions.download, true);
-  assert.equal(permissions.upload, false);
-  assert.equal(permissions.delete, false);
-});
-
-test("upload links can upload but cannot delete", () => {
-  assert.equal(canAccess("upload", "upload"), true);
-  assert.equal(canAccess("upload", "delete"), false);
-});
-
-test("edit links can delete resources", () => {
+  assert.equal(permissions.upload, true);
+  assert.equal(permissions.delete, true);
+  assert.equal(canAccess("edit", "upload"), true);
   assert.equal(canAccess("edit", "delete"), true);
 });
 
@@ -36,17 +29,23 @@ test("expiry helper marks entities inactive after expiresAt", () => {
   assert.equal(isInactive(entity, now), true);
 });
 
-test("createShare returns a safe default upload link", () => {
+test("createShare returns a safe default full-access link", () => {
   const now = new Date("2026-07-03T10:00:00.000Z");
   const share = createShare({ name: "Client upload" }, now);
 
   assert.match(share.id, /^share_/);
   assert.equal(share.name, "Client upload");
-  assert.equal(share.accessMode, "upload");
+  assert.equal(share.accessMode, "edit");
   assert.equal(share.permissions.upload, true);
-  assert.equal(share.permissions.delete, false);
+  assert.equal(share.permissions.delete, true);
   assert.equal(share.createdAt, "2026-07-03T10:00:00.000Z");
   assert.equal(share.expiresAt, "2026-07-04T10:00:00.000Z");
+});
+
+test("createShare can use a safe preselected share id", () => {
+  const share = createShare({ id: "share_customRoom123" });
+
+  assert.equal(share.id, "share_customRoom123");
 });
 
 test("previewTypeForMime maps common browser preview types", () => {

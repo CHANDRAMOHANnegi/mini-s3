@@ -6,9 +6,8 @@ The product idea is simple:
 
 ```txt
 create a share link
-  -> choose permission
   -> send URL to someone
-  -> they upload, preview, download, or delete based on that link
+  -> they upload, preview, download, or delete from that link
 ```
 
 No guest login. The URL is the capability.
@@ -42,40 +41,33 @@ npm start     # run compiled server
 
 ```txt
 share creation
-permission modes: readonly, upload, edit
+clean /s/share_xxx links
+full resource access for everyone with the link
 browser UI
 multipart file upload
 resource listing
 preview route
 download route
-delete route for edit links
+delete route
 expiry enforcement
 local object storage
 JSON metadata persistence
 cleanup scheduler for expired resources
+optional admin token for share creation
 ```
 
-## Permission Modes
+## Link Behavior
 
 ```txt
-readonly
-  list
-  preview
-  download
-
-upload
-  list
-  preview
-  download
+anyone with /s/share_xxx can:
   upload
-
-edit
   list
   preview
   download
-  upload
   delete
 ```
+
+Safety comes from short expiry, random unguessable ids, file-size limits, and cleanup.
 
 ## API
 
@@ -87,7 +79,6 @@ content-type: application/json
 
 {
   "name": "Project dropbox",
-  "accessMode": "upload",
   "expiresInHours": 24,
   "maxResourceBytes": 104857600
 }
@@ -132,13 +123,19 @@ Delete:
 DELETE /api/shares/:shareId/resources/:resourceId
 ```
 
-Delete works only for `edit` shares.
+Delete works for active share links.
+
+If `ADMIN_TOKEN` is configured, automatic link creation must include:
+
+```txt
+x-admin-token: <token>
+```
 
 ## Browser Routes
 
 ```txt
 /           create/open share UI
-/s/:shareId open a share UI
+/s/:shareId open or create a share UI
 ```
 
 Example:
@@ -193,6 +190,24 @@ CLEANUP_INTERVAL_MS=60000 npm run dev
 
 Cleanup scans resources, removes expired bytes, and marks expired metadata deleted.
 
+## Optional Admin Token
+
+Guests do not log in.
+
+But public deployments can protect share creation:
+
+```bash
+ADMIN_TOKEN=secret npm run dev
+```
+
+Then only `POST /api/shares` requires:
+
+```txt
+x-admin-token: secret
+```
+
+Existing share links still work without login.
+
 ## Learning Docs
 
 The implementation is split into lessons:
@@ -201,6 +216,8 @@ The implementation is split into lessons:
 docs/LESSON_01_DOMAIN_MODEL.md
 ...
 docs/LESSON_17_BROWSER_UI.md
+docs/LESSON_18_ADMIN_TOKEN.md
+docs/LESSON_19_LINK_FIRST_FULL_ACCESS.md
 ```
 
 Start with:
@@ -222,7 +239,6 @@ Important gaps:
 no Postgres yet
 no rate limiting yet
 no malware scanning
-no auth for share creation
 no direct-to-object-storage upload
 no resumable large uploads
 no distributed cleanup lock

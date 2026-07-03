@@ -2,7 +2,6 @@ import path from "node:path";
 import express, { type ErrorRequestHandler, type RequestHandler } from "express";
 import multer from "multer";
 import { isInactive } from "./domain/expiry.js";
-import { canAccess } from "./domain/permissions.js";
 import { createResource, type Resource } from "./domain/resources.js";
 import { createShare, type Share } from "./domain/shares.js";
 import { createLocalObjectStorage } from "./storage/localStorage.js";
@@ -14,6 +13,7 @@ export type AppDependencies = {
   shareStore?: ShareStore;
   resourceStore?: ResourceStore;
   objectStorage?: ObjectStorage;
+  adminToken?: string;
 };
 
 const uploadParser = multer({
@@ -97,6 +97,11 @@ function sendExpiredResource(res: express.Response, resource: Resource): boolean
   return true;
 }
 
+function requestAdminToken(req: express.Request): string {
+  const token = req.header("x-admin-token");
+  return token || "";
+}
+
 export function createApp(dependencies: AppDependencies = {}) {
   const app = express();
   const shareStore = dependencies.shareStore || createMemoryShareStore();
@@ -122,11 +127,24 @@ export function createApp(dependencies: AppDependencies = {}) {
   });
 
   app.post("/api/shares", async (req, res) => {
-    const share = await shareStore.create(createShare(objectBody(req.body)));
+    if (dependencies.adminToken && requestAdminToken(req) !== dependencies.adminToken) {
+      res.status(401).json({
+        error: {
+          code: "ADMIN_TOKEN_REQUIRED",
+          message: "Creating shares requires a valid admin token."
+        }
+      });
+      return;
+    }
+
+    const body = objectBody(req.body);
+    const share = createShare(body);
+    const existingShare = await shareStore.findById(share.id);
+    const savedShare = existingShare || (await shareStore.create(share));
 
     res.status(201).json({
-      share,
-      shareUrl: `/s/${share.id}`
+      share: savedShare,
+      shareUrl: `/s/${savedShare.id}`
     });
   });
 
@@ -181,16 +199,6 @@ export function createApp(dependencies: AppDependencies = {}) {
 
     if (sendInactiveShare(res, share)) return;
 
-    if (!canAccess(share.accessMode, "download")) {
-      res.status(403).json({
-        error: {
-          code: "PERMISSION_DENIED",
-          message: "This share link does not allow downloads."
-        }
-      });
-      return;
-    }
-
     const resource = await resourceStore.findById(routeParam(req.params.resourceId));
 
     if (!resource || resource.shareId !== share.id || resource.deletedAt) {
@@ -238,16 +246,6 @@ export function createApp(dependencies: AppDependencies = {}) {
     }
 
     if (sendInactiveShare(res, share)) return;
-
-    if (!canAccess(share.accessMode, "preview")) {
-      res.status(403).json({
-        error: {
-          code: "PERMISSION_DENIED",
-          message: "This share link does not allow previews."
-        }
-      });
-      return;
-    }
 
     const resource = await resourceStore.findById(routeParam(req.params.resourceId));
 
@@ -311,16 +309,6 @@ export function createApp(dependencies: AppDependencies = {}) {
 
     if (sendInactiveShare(res, share)) return;
 
-    if (!canAccess(share.accessMode, "delete")) {
-      res.status(403).json({
-        error: {
-          code: "PERMISSION_DENIED",
-          message: "This share link does not allow deletes."
-        }
-      });
-      return;
-    }
-
     const resource = await resourceStore.findById(routeParam(req.params.resourceId));
 
     if (!resource || resource.shareId !== share.id || resource.deletedAt) {
@@ -355,16 +343,6 @@ export function createApp(dependencies: AppDependencies = {}) {
     }
 
     if (sendInactiveShare(res, share)) return;
-
-    if (!canAccess(share.accessMode, "upload")) {
-      res.status(403).json({
-        error: {
-          code: "PERMISSION_DENIED",
-          message: "This share link does not allow uploads."
-        }
-      });
-      return;
-    }
 
     const body = objectBody(req.body);
     const uploadedFile = req.file;

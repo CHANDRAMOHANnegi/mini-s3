@@ -29,14 +29,13 @@ test("GET / and /s/:shareId serve the browser UI", async () => {
   assert.match(shareResponse.text, /Temporary resource share/);
 });
 
-test("POST /api/shares creates an upload share", async () => {
+test("POST /api/shares creates a full-access share", async () => {
   const app = createApp({ shareStore: createMemoryShareStore() });
 
   const response = await request(app)
     .post("/api/shares")
     .send({
       name: "Client upload",
-      accessMode: "upload",
       expiresInHours: 24,
       maxResourceBytes: 1024
     })
@@ -44,11 +43,52 @@ test("POST /api/shares creates an upload share", async () => {
 
   assert.match(response.body.share.id, /^share_/);
   assert.equal(response.body.share.name, "Client upload");
-  assert.equal(response.body.share.accessMode, "upload");
+  assert.equal(response.body.share.accessMode, "edit");
   assert.equal(response.body.share.permissions.upload, true);
-  assert.equal(response.body.share.permissions.delete, false);
+  assert.equal(response.body.share.permissions.delete, true);
   assert.equal(response.body.share.maxResourceBytes, 1024);
   assert.equal(response.body.shareUrl, `/s/${response.body.share.id}`);
+});
+
+test("POST /api/shares can create or reuse a clean link-first share id", async () => {
+  const app = createApp({ shareStore: createMemoryShareStore() });
+
+  const firstResponse = await request(app)
+    .post("/api/shares")
+    .send({ id: "share_linkFirst123", name: "Link room" })
+    .expect(201);
+  const secondResponse = await request(app)
+    .post("/api/shares")
+    .send({ id: "share_linkFirst123", name: "Ignored rename" })
+    .expect(201);
+
+  assert.equal(firstResponse.body.share.id, "share_linkFirst123");
+  assert.equal(secondResponse.body.share.id, "share_linkFirst123");
+  assert.equal(secondResponse.body.share.name, "Link room");
+});
+
+test("POST /api/shares requires admin token when configured", async () => {
+  const app = createApp({ shareStore: createMemoryShareStore(), adminToken: "secret" });
+
+  const missingTokenResponse = await request(app)
+    .post("/api/shares")
+    .send({ name: "Blocked", accessMode: "upload" })
+    .expect(401);
+  assert.equal(missingTokenResponse.body.error.code, "ADMIN_TOKEN_REQUIRED");
+
+  const wrongTokenResponse = await request(app)
+    .post("/api/shares")
+    .set("x-admin-token", "wrong")
+    .send({ name: "Blocked", accessMode: "upload" })
+    .expect(401);
+  assert.equal(wrongTokenResponse.body.error.code, "ADMIN_TOKEN_REQUIRED");
+
+  const response = await request(app)
+    .post("/api/shares")
+    .set("x-admin-token", "secret")
+    .send({ name: "Allowed", accessMode: "upload" })
+    .expect(201);
+  assert.equal(response.body.share.name, "Allowed");
 });
 
 test("GET /api/shares/:shareId returns a created share", async () => {
@@ -56,7 +96,7 @@ test("GET /api/shares/:shareId returns a created share", async () => {
 
   const createResponse = await request(app)
     .post("/api/shares")
-    .send({ name: "Review room", accessMode: "readonly" })
+    .send({ name: "Review room" })
     .expect(201);
 
   const shareId = createResponse.body.share.id;
@@ -64,8 +104,9 @@ test("GET /api/shares/:shareId returns a created share", async () => {
 
   assert.equal(getResponse.body.share.id, shareId);
   assert.equal(getResponse.body.share.name, "Review room");
-  assert.equal(getResponse.body.share.accessMode, "readonly");
-  assert.equal(getResponse.body.share.permissions.upload, false);
+  assert.equal(getResponse.body.share.accessMode, "edit");
+  assert.equal(getResponse.body.share.permissions.upload, true);
+  assert.equal(getResponse.body.share.permissions.delete, true);
 });
 
 test("GET /api/shares/:shareId/resources lists resources inside a share", async () => {
@@ -268,7 +309,7 @@ test("GET /api/shares/:shareId/resources/:resourceId/download streams uploaded b
 
   const createShareResponse = await request(app)
     .post("/api/shares")
-    .send({ name: "Download room", accessMode: "readonly", maxResourceBytes: 1024 })
+    .send({ name: "Download room", maxResourceBytes: 1024 })
     .expect(201);
 
   const share = createShareResponse.body.share;
@@ -330,7 +371,7 @@ test("GET /api/shares/:shareId/resources/:resourceId/preview streams previewable
 
   const createShareResponse = await request(app)
     .post("/api/shares")
-    .send({ name: "Preview room", accessMode: "readonly", maxResourceBytes: 1024 })
+    .send({ name: "Preview room", maxResourceBytes: 1024 })
     .expect(201);
 
   const share = createShareResponse.body.share;
@@ -365,7 +406,7 @@ test("GET /api/shares/:shareId/resources/:resourceId/preview rejects binary reso
 
   const createShareResponse = await request(app)
     .post("/api/shares")
-    .send({ name: "Binary room", accessMode: "readonly", maxResourceBytes: 1024 })
+    .send({ name: "Binary room", maxResourceBytes: 1024 })
     .expect(201);
 
   const share = createShareResponse.body.share;
@@ -388,7 +429,7 @@ test("GET /api/shares/:shareId/resources/:resourceId/preview rejects binary reso
   assert.equal(response.body.error.code, "PREVIEW_UNSUPPORTED");
 });
 
-test("DELETE /api/shares/:shareId/resources/:resourceId deletes resource for edit links", async () => {
+test("DELETE /api/shares/:shareId/resources/:resourceId deletes resource for active links", async () => {
   const shareStore = createMemoryShareStore();
   const resourceStore = createMemoryResourceStore();
   const storageRoot = await mkdtemp(path.join(tmpdir(), "mini-s3-delete-"));
@@ -430,7 +471,7 @@ test("DELETE /api/shares/:shareId/resources/:resourceId deletes resource for edi
   assert.equal(downloadResponse.body.error.code, "RESOURCE_NOT_FOUND");
 });
 
-test("DELETE /api/shares/:shareId/resources/:resourceId rejects non-edit links", async () => {
+test("DELETE /api/shares/:shareId/resources/:resourceId works for every active share link", async () => {
   const shareStore = createMemoryShareStore();
   const resourceStore = createMemoryResourceStore();
   const storageRoot = await mkdtemp(path.join(tmpdir(), "mini-s3-delete-denied-"));
@@ -455,26 +496,26 @@ test("DELETE /api/shares/:shareId/resources/:resourceId rejects non-edit links",
   await objectStorage.put(resource.storageKey, bytes);
   await resourceStore.create(resource);
 
-  const response = await request(app).delete(`/api/shares/${share.id}/resources/${resource.id}`).expect(403);
+  const response = await request(app).delete(`/api/shares/${share.id}/resources/${resource.id}`).expect(200);
 
-  assert.equal(response.body.error.code, "PERMISSION_DENIED");
-  assert.equal(await objectStorage.exists(resource.storageKey), true);
+  assert.equal(response.body.resource.id, resource.id);
+  assert.equal(await objectStorage.exists(resource.storageKey), false);
 });
 
-test("POST /api/shares/:shareId/resources rejects readonly links", async () => {
+test("POST /api/shares/:shareId/resources allows uploads for every active share link", async () => {
   const app = createApp({ shareStore: createMemoryShareStore(), resourceStore: createMemoryResourceStore() });
 
   const createShareResponse = await request(app)
     .post("/api/shares")
-    .send({ name: "Readonly room", accessMode: "readonly" })
+    .send({ name: "Full access room" })
     .expect(201);
 
   const response = await request(app)
     .post(`/api/shares/${createShareResponse.body.share.id}/resources`)
     .send({ originalName: "blocked.txt", mimeType: "text/plain", size: 1 })
-    .expect(403);
+    .expect(201);
 
-  assert.equal(response.body.error.code, "PERMISSION_DENIED");
+  assert.equal(response.body.resource.originalName, "blocked.txt");
 });
 
 test("POST /api/shares/:shareId/resources rejects oversized resources", async () => {
