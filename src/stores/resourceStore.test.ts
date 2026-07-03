@@ -58,3 +58,21 @@ test("memory resource store lists resources for one share only", async () => {
     ["second.txt", "first.txt"]
   );
 });
+
+test("memory resource store listAll includes deleted resources for cleanup jobs", async () => {
+  const store = createMemoryResourceStore();
+  const resource = createResource({
+    shareId: "share_123",
+    originalName: "deleted.txt",
+    mimeType: "text/plain",
+    size: 1,
+    expiresAt: "2026-07-04T10:00:00.000Z"
+  });
+
+  await store.create(resource);
+  await store.markDeleted(resource.id, new Date("2026-07-03T10:00:00.000Z"));
+
+  assert.equal((await store.listByShareId("share_123")).length, 0);
+  assert.equal((await store.listAll()).length, 1);
+  assert.equal((await store.listAll())[0].deletedAt, "2026-07-03T10:00:00.000Z");
+});

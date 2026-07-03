@@ -3,6 +3,7 @@ import type { Resource } from "../domain/resources.js";
 export type ResourceStore = {
   create(resource: Resource): Promise<Resource>;
   findById(id: string): Promise<Resource | null>;
+  listAll(): Promise<Resource[]>;
   listByShareId(shareId: string): Promise<Resource[]>;
   markDeleted(id: string, deletedAt?: Date): Promise<Resource | null>;
 };
@@ -18,6 +19,10 @@ export function createMemoryResourceStore(): ResourceStore {
 
     async findById(id) {
       return resources.get(id) || null;
+    },
+
+    async listAll() {
+      return [...resources.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     },
 
     async listByShareId(shareId) {
