@@ -56,6 +56,10 @@ function numberField(body: Record<string, unknown>, key: string, fallback: numbe
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
+function routeParam(value: string | string[]): string {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 export function createApp(dependencies: AppDependencies = {}) {
   const app = express();
   const shareStore = dependencies.shareStore || createMemoryShareStore();
@@ -83,7 +87,7 @@ export function createApp(dependencies: AppDependencies = {}) {
   });
 
   app.get("/api/shares/:shareId", async (req, res) => {
-    const share = await shareStore.findById(req.params.shareId);
+    const share = await shareStore.findById(routeParam(req.params.shareId));
 
     if (!share) {
       res.status(404).json({
@@ -99,7 +103,7 @@ export function createApp(dependencies: AppDependencies = {}) {
   });
 
   app.get("/api/shares/:shareId/resources", async (req, res) => {
-    const share = await shareStore.findById(req.params.shareId);
+    const share = await shareStore.findById(routeParam(req.params.shareId));
 
     if (!share) {
       res.status(404).json({
@@ -117,7 +121,7 @@ export function createApp(dependencies: AppDependencies = {}) {
   });
 
   app.post("/api/shares/:shareId/resources", uploadParser.single("file"), async (req, res) => {
-    const share = await shareStore.findById(req.params.shareId);
+    const share = await shareStore.findById(routeParam(req.params.shareId));
 
     if (!share) {
       res.status(404).json({

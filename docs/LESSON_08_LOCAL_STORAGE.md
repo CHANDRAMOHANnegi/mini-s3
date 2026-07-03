@@ -86,21 +86,20 @@ Why?
 
 Because a malicious key should never write outside the storage folder.
 
-## Current Limitation
+## What Came Next
 
-We can store bytes now, but the API route is not connected to byte upload yet.
-
-Next step:
+The API route now accepts multipart uploads.
 
 ```txt
-POST /api/shares/:shareId/resources/content
-or multipart/form-data upload route
+POST /api/shares/:shareId/resources
+field name: file
 ```
 
-We will connect:
+Flow:
 
 ```txt
 request file bytes
-  -> storage.put()
-  -> resource metadata
+  -> create resource metadata
+  -> storage.put(resource.storageKey, bytes)
+  -> resourceStore.create(resource)
 ```
