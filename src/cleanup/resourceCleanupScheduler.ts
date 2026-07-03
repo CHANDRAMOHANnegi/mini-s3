@@ -4,7 +4,9 @@ import {
   type ResourceCleanupResult
 } from "./resourceCleanup.js";
 
-type TimerHandle = ReturnType<typeof setInterval>;
+type TimerHandle = number | { unref?: () => void };
+type SetIntervalFn = (callback: () => void, intervalMs: number) => TimerHandle;
+type ClearIntervalFn = (handle: TimerHandle) => void;
 
 export type CleanupLogger = {
   info(message: string, details?: unknown): void;
@@ -16,8 +18,8 @@ export type ResourceCleanupSchedulerOptions = ResourceCleanupDependencies & {
   logger?: CleanupLogger;
   runImmediately?: boolean;
   now?: () => Date;
-  setIntervalFn?: typeof setInterval;
-  clearIntervalFn?: typeof clearInterval;
+  setIntervalFn?: SetIntervalFn;
+  clearIntervalFn?: ClearIntervalFn;
 };
 
 export type ResourceCleanupScheduler = {
@@ -28,8 +30,9 @@ export type ResourceCleanupScheduler = {
 export function startResourceCleanupScheduler(options: ResourceCleanupSchedulerOptions): ResourceCleanupScheduler {
   const logger = options.logger || console;
   const now = options.now || (() => new Date());
-  const setIntervalFn = options.setIntervalFn || setInterval;
-  const clearIntervalFn = options.clearIntervalFn || clearInterval;
+  const setIntervalFn = options.setIntervalFn || ((callback, intervalMs) => setInterval(callback, intervalMs));
+  const clearIntervalFn =
+    options.clearIntervalFn || ((handle) => clearInterval(handle as ReturnType<typeof setInterval>));
   let running = false;
   let stopped = false;
 
@@ -57,8 +60,10 @@ export function startResourceCleanupScheduler(options: ResourceCleanupSchedulerO
 
   const timer = setIntervalFn(() => {
     void runOnce();
-  }, options.intervalMs) as TimerHandle;
-  timer.unref?.();
+  }, options.intervalMs);
+  if (typeof timer === "object") {
+    timer.unref?.();
+  }
 
   if (options.runImmediately) {
     void runOnce();

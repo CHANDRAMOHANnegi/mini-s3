@@ -58,10 +58,10 @@ test("resource cleanup scheduler stop clears the registered interval", () => {
     objectStorage,
     intervalMs: 1234,
     logger: silentLogger,
-    setIntervalFn(callback, intervalMs) {
+    setIntervalFn(callback: () => void, intervalMs: number) {
       void callback;
       registeredIntervalMs = intervalMs;
-      return timer as NodeJS.Timeout;
+      return timer;
     },
     clearIntervalFn(handle) {
       clearedTimer = handle;
