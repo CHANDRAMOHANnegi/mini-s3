@@ -1,9 +1,10 @@
 import path from "node:path";
 import express, { type ErrorRequestHandler, type RequestHandler } from "express";
 import multer from "multer";
+import { isInactive } from "./domain/expiry.js";
 import { canAccess } from "./domain/permissions.js";
 import { createResource, type Resource } from "./domain/resources.js";
-import { createShare } from "./domain/shares.js";
+import { createShare, type Share } from "./domain/shares.js";
 import { createLocalObjectStorage } from "./storage/localStorage.js";
 import type { ObjectStorage } from "./storage/storage.js";
 import { createMemoryResourceStore, type ResourceStore } from "./stores/resourceStore.js";
@@ -68,6 +69,34 @@ function quotedFilename(name: string): string {
   return name.replaceAll("\\", "_").replaceAll('"', "'").replace(/[\r\n]/g, "_");
 }
 
+function inactiveShareCode(share: Share): "SHARE_REVOKED" | "SHARE_EXPIRED" {
+  return share.revokedAt ? "SHARE_REVOKED" : "SHARE_EXPIRED";
+}
+
+function sendInactiveShare(res: express.Response, share: Share): boolean {
+  if (!isInactive(share)) return false;
+
+  res.status(410).json({
+    error: {
+      code: inactiveShareCode(share),
+      message: "Share link is no longer active."
+    }
+  });
+  return true;
+}
+
+function sendExpiredResource(res: express.Response, resource: Resource): boolean {
+  if (!isInactive(resource)) return false;
+
+  res.status(410).json({
+    error: {
+      code: "RESOURCE_EXPIRED",
+      message: "Resource is no longer active."
+    }
+  });
+  return true;
+}
+
 export function createApp(dependencies: AppDependencies = {}) {
   const app = express();
   const shareStore = dependencies.shareStore || createMemoryShareStore();
@@ -123,7 +152,9 @@ export function createApp(dependencies: AppDependencies = {}) {
       return;
     }
 
-    const resources = await resourceStore.listByShareId(share.id);
+    if (sendInactiveShare(res, share)) return;
+
+    const resources = (await resourceStore.listByShareId(share.id)).filter((resource) => !isInactive(resource));
 
     res.json({ share, resources });
   });
@@ -140,6 +171,8 @@ export function createApp(dependencies: AppDependencies = {}) {
       });
       return;
     }
+
+    if (sendInactiveShare(res, share)) return;
 
     if (!canAccess(share.accessMode, "download")) {
       res.status(403).json({
@@ -162,6 +195,8 @@ export function createApp(dependencies: AppDependencies = {}) {
       });
       return;
     }
+
+    if (sendExpiredResource(res, resource)) return;
 
     if (!(await objectStorage.exists(resource.storageKey))) {
       res.status(404).json({
@@ -195,6 +230,8 @@ export function createApp(dependencies: AppDependencies = {}) {
       return;
     }
 
+    if (sendInactiveShare(res, share)) return;
+
     if (!canAccess(share.accessMode, "preview")) {
       res.status(403).json({
         error: {
@@ -216,6 +253,8 @@ export function createApp(dependencies: AppDependencies = {}) {
       });
       return;
     }
+
+    if (sendExpiredResource(res, resource)) return;
 
     if (!canPreview(resource)) {
       res.status(415).json({
@@ -263,6 +302,8 @@ export function createApp(dependencies: AppDependencies = {}) {
       return;
     }
 
+    if (sendInactiveShare(res, share)) return;
+
     if (!canAccess(share.accessMode, "delete")) {
       res.status(403).json({
         error: {
@@ -285,6 +326,8 @@ export function createApp(dependencies: AppDependencies = {}) {
       return;
     }
 
+    if (sendExpiredResource(res, resource)) return;
+
     await objectStorage.delete(resource.storageKey);
     const deletedResource = await resourceStore.markDeleted(resource.id);
 
@@ -303,6 +346,8 @@ export function createApp(dependencies: AppDependencies = {}) {
       });
       return;
     }
+
+    if (sendInactiveShare(res, share)) return;
 
     if (!canAccess(share.accessMode, "upload")) {
       res.status(403).json({

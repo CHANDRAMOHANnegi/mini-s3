@@ -6,6 +6,7 @@ import { test } from "node:test";
 import request from "supertest";
 import { createApp } from "./app.js";
 import { createResource } from "./domain/resources.js";
+import { createShare } from "./domain/shares.js";
 import { createLocalObjectStorage } from "./storage/localStorage.js";
 import { createMemoryResourceStore } from "./stores/resourceStore.js";
 import { createMemoryShareStore } from "./stores/shareStore.js";
@@ -91,6 +92,94 @@ test("GET /api/shares/:shareId/resources returns 404 for missing share", async (
   const response = await request(app).get("/api/shares/share_missing/resources").expect(404);
 
   assert.equal(response.body.error.code, "SHARE_NOT_FOUND");
+});
+
+test("expired shares reject resource actions", async () => {
+  const shareStore = createMemoryShareStore();
+  const resourceStore = createMemoryResourceStore();
+  const storageRoot = await mkdtemp(path.join(tmpdir(), "mini-s3-expired-share-"));
+  const objectStorage = createLocalObjectStorage({ rootDir: storageRoot });
+  const app = createApp({ shareStore, resourceStore, objectStorage });
+  const agent = request.agent(app);
+  const expiredShare = await shareStore.create(
+    createShare({ name: "Expired room", accessMode: "edit" }, new Date("2024-01-01T00:00:00.000Z"))
+  );
+  const bytes = Buffer.from("expired share resource");
+  const resource = createResource({
+    shareId: expiredShare.id,
+    originalName: "old.txt",
+    mimeType: "text/plain",
+    size: bytes.length,
+    bytes,
+    expiresAt: expiredShare.expiresAt
+  });
+  await objectStorage.put(resource.storageKey, bytes);
+  await resourceStore.create(resource);
+
+  const listResponse = await agent.get(`/api/shares/${expiredShare.id}/resources`).expect(410);
+  assert.equal(listResponse.body.error.code, "SHARE_EXPIRED");
+
+  const uploadResponse = await agent
+    .post(`/api/shares/${expiredShare.id}/resources`)
+    .send({ originalName: "new.txt", mimeType: "text/plain", size: 1 })
+    .expect(410);
+  assert.equal(uploadResponse.body.error.code, "SHARE_EXPIRED");
+
+  const downloadResponse = await agent
+    .get(`/api/shares/${expiredShare.id}/resources/${resource.id}/download`)
+    .expect(410);
+  assert.equal(downloadResponse.body.error.code, "SHARE_EXPIRED");
+
+  const previewResponse = await agent
+    .get(`/api/shares/${expiredShare.id}/resources/${resource.id}/preview`)
+    .expect(410);
+  assert.equal(previewResponse.body.error.code, "SHARE_EXPIRED");
+
+  const deleteResponse = await agent.delete(`/api/shares/${expiredShare.id}/resources/${resource.id}`).expect(410);
+  assert.equal(deleteResponse.body.error.code, "SHARE_EXPIRED");
+});
+
+test("expired resources are hidden from lists and blocked for direct actions", async () => {
+  const shareStore = createMemoryShareStore();
+  const resourceStore = createMemoryResourceStore();
+  const storageRoot = await mkdtemp(path.join(tmpdir(), "mini-s3-expired-resource-"));
+  const objectStorage = createLocalObjectStorage({ rootDir: storageRoot });
+  const app = createApp({ shareStore, resourceStore, objectStorage });
+  const agent = request.agent(app);
+
+  const createShareResponse = await agent
+    .post("/api/shares")
+    .send({ name: "Active share", accessMode: "edit", maxResourceBytes: 1024 })
+    .expect(201);
+
+  const share = createShareResponse.body.share;
+  const bytes = Buffer.from("expired resource");
+  const resource = createResource({
+    shareId: share.id,
+    originalName: "expired.txt",
+    mimeType: "text/plain",
+    size: bytes.length,
+    bytes,
+    expiresAt: "2024-01-01T00:00:00.000Z"
+  });
+  await objectStorage.put(resource.storageKey, bytes);
+  await resourceStore.create(resource);
+
+  const listResponse = await agent.get(`/api/shares/${share.id}/resources`).expect(200);
+  assert.equal(listResponse.body.resources.length, 0);
+
+  const downloadResponse = await agent
+    .get(`/api/shares/${share.id}/resources/${resource.id}/download`)
+    .expect(410);
+  assert.equal(downloadResponse.body.error.code, "RESOURCE_EXPIRED");
+
+  const previewResponse = await agent
+    .get(`/api/shares/${share.id}/resources/${resource.id}/preview`)
+    .expect(410);
+  assert.equal(previewResponse.body.error.code, "RESOURCE_EXPIRED");
+
+  const deleteResponse = await agent.delete(`/api/shares/${share.id}/resources/${resource.id}`).expect(410);
+  assert.equal(deleteResponse.body.error.code, "RESOURCE_EXPIRED");
 });
 
 test("POST /api/shares/:shareId/resources creates resource metadata", async () => {
