@@ -89,6 +89,71 @@ test("GET /api/shares/:shareId/resources returns 404 for missing share", async (
   assert.equal(response.body.error.code, "SHARE_NOT_FOUND");
 });
 
+test("POST /api/shares/:shareId/resources creates resource metadata", async () => {
+  const shareStore = createMemoryShareStore();
+  const resourceStore = createMemoryResourceStore();
+  const app = createApp({ shareStore, resourceStore });
+
+  const createShareResponse = await request(app)
+    .post("/api/shares")
+    .send({ name: "Upload room", accessMode: "upload", maxResourceBytes: 1024 })
+    .expect(201);
+
+  const share = createShareResponse.body.share;
+  const createResourceResponse = await request(app)
+    .post(`/api/shares/${share.id}/resources`)
+    .send({
+      originalName: "hello.txt",
+      mimeType: "text/plain",
+      size: 12,
+      metadata: { note: "metadata only for now" }
+    })
+    .expect(201);
+
+  assert.match(createResourceResponse.body.resource.id, /^res_/);
+  assert.equal(createResourceResponse.body.resource.shareId, share.id);
+  assert.equal(createResourceResponse.body.resource.originalName, "hello.txt");
+  assert.equal(createResourceResponse.body.resource.mimeType, "text/plain");
+  assert.equal(createResourceResponse.body.resource.previewType, "text");
+  assert.equal(createResourceResponse.body.resource.expiresAt, share.expiresAt);
+
+  const listResponse = await request(app).get(`/api/shares/${share.id}/resources`).expect(200);
+  assert.equal(listResponse.body.resources.length, 1);
+  assert.equal(listResponse.body.resources[0].id, createResourceResponse.body.resource.id);
+});
+
+test("POST /api/shares/:shareId/resources rejects readonly links", async () => {
+  const app = createApp({ shareStore: createMemoryShareStore(), resourceStore: createMemoryResourceStore() });
+
+  const createShareResponse = await request(app)
+    .post("/api/shares")
+    .send({ name: "Readonly room", accessMode: "readonly" })
+    .expect(201);
+
+  const response = await request(app)
+    .post(`/api/shares/${createShareResponse.body.share.id}/resources`)
+    .send({ originalName: "blocked.txt", mimeType: "text/plain", size: 1 })
+    .expect(403);
+
+  assert.equal(response.body.error.code, "PERMISSION_DENIED");
+});
+
+test("POST /api/shares/:shareId/resources rejects oversized resources", async () => {
+  const app = createApp({ shareStore: createMemoryShareStore(), resourceStore: createMemoryResourceStore() });
+
+  const createShareResponse = await request(app)
+    .post("/api/shares")
+    .send({ name: "Small room", accessMode: "upload", maxResourceBytes: 10 })
+    .expect(201);
+
+  const response = await request(app)
+    .post(`/api/shares/${createShareResponse.body.share.id}/resources`)
+    .send({ originalName: "large.txt", mimeType: "text/plain", size: 11 })
+    .expect(413);
+
+  assert.equal(response.body.error.code, "RESOURCE_TOO_LARGE");
+});
+
 test("GET /api/shares/:shareId returns 404 for missing share", async () => {
   const app = createApp({ shareStore: createMemoryShareStore() });
 

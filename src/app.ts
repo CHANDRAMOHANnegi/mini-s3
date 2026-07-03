@@ -1,4 +1,6 @@
 import express, { type ErrorRequestHandler, type RequestHandler } from "express";
+import { canAccess } from "./domain/permissions.js";
+import { createResource } from "./domain/resources.js";
 import { createShare } from "./domain/shares.js";
 import { createMemoryResourceStore, type ResourceStore } from "./stores/resourceStore.js";
 import { createMemoryShareStore, type ShareStore } from "./stores/shareStore.js";
@@ -30,6 +32,16 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
 
 function objectBody(body: unknown): Record<string, unknown> {
   return typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+}
+
+function stringField(body: Record<string, unknown>, key: string, fallback: string): string {
+  const value = body[key];
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function numberField(body: Record<string, unknown>, key: string, fallback: number): number {
+  const value = Number(body[key]);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
 export function createApp(dependencies: AppDependencies = {}) {
@@ -88,6 +100,56 @@ export function createApp(dependencies: AppDependencies = {}) {
     const resources = await resourceStore.listByShareId(share.id);
 
     res.json({ share, resources });
+  });
+
+  app.post("/api/shares/:shareId/resources", async (req, res) => {
+    const share = await shareStore.findById(req.params.shareId);
+
+    if (!share) {
+      res.status(404).json({
+        error: {
+          code: "SHARE_NOT_FOUND",
+          message: "Share link not found."
+        }
+      });
+      return;
+    }
+
+    if (!canAccess(share.accessMode, "upload")) {
+      res.status(403).json({
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "This share link does not allow uploads."
+        }
+      });
+      return;
+    }
+
+    const body = objectBody(req.body);
+    const size = numberField(body, "size", 0);
+
+    if (size > share.maxResourceBytes) {
+      res.status(413).json({
+        error: {
+          code: "RESOURCE_TOO_LARGE",
+          message: `Resource is larger than ${share.maxResourceBytes} bytes.`
+        }
+      });
+      return;
+    }
+
+    const resource = await resourceStore.create(
+      createResource({
+        shareId: share.id,
+        originalName: stringField(body, "originalName", "untitled-resource"),
+        mimeType: stringField(body, "mimeType", "application/octet-stream"),
+        size,
+        expiresAt: share.expiresAt,
+        metadata: objectBody(body.metadata)
+      })
+    );
+
+    res.status(201).json({ resource });
   });
 
   app.use(notFoundHandler);
