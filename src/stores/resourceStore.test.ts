@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { test } from "node:test";
 import { createResource } from "../domain/resources.js";
-import { createMemoryResourceStore } from "./resourceStore.js";
+import { createJsonFileResourceStore, createMemoryResourceStore } from "./resourceStore.js";
 
 test("memory resource store saves and finds resources by id", async () => {
   const store = createMemoryResourceStore();
@@ -75,4 +78,28 @@ test("memory resource store listAll includes deleted resources for cleanup jobs"
   assert.equal((await store.listByShareId("share_123")).length, 0);
   assert.equal((await store.listAll()).length, 1);
   assert.equal((await store.listAll())[0].deletedAt, "2026-07-03T10:00:00.000Z");
+});
+
+test("json file resource store persists resources and deletion state across store instances", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "mini-s3-resource-store-"));
+  const filePath = path.join(rootDir, "resources.json");
+  const firstStore = createJsonFileResourceStore(filePath);
+  const resource = createResource({
+    shareId: "share_123",
+    originalName: "persistent.txt",
+    mimeType: "text/plain",
+    size: 1,
+    expiresAt: "2026-07-04T10:00:00.000Z"
+  });
+
+  await firstStore.create(resource);
+  await firstStore.markDeleted(resource.id, new Date("2026-07-03T10:00:00.000Z"));
+
+  const secondStore = createJsonFileResourceStore(filePath);
+  const savedResource = await secondStore.findById(resource.id);
+
+  assert.equal(savedResource?.originalName, "persistent.txt");
+  assert.equal(savedResource?.deletedAt, "2026-07-03T10:00:00.000Z");
+  assert.equal((await secondStore.listByShareId("share_123")).length, 0);
+  assert.equal((await secondStore.listAll()).length, 1);
 });

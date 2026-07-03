@@ -2,13 +2,14 @@ import path from "node:path";
 import { createApp } from "./app.js";
 import { startResourceCleanupScheduler } from "./cleanup/resourceCleanupScheduler.js";
 import { createLocalObjectStorage } from "./storage/localStorage.js";
-import { createMemoryResourceStore } from "./stores/resourceStore.js";
-import { createMemoryShareStore } from "./stores/shareStore.js";
+import { createJsonFileResourceStore } from "./stores/resourceStore.js";
+import { createJsonFileShareStore } from "./stores/shareStore.js";
 
 const port = Number(process.env.PORT || 8787);
 const cleanupIntervalMs = Number(process.env.CLEANUP_INTERVAL_MS || 5 * 60 * 1000);
-const shareStore = createMemoryShareStore();
-const resourceStore = createMemoryResourceStore();
+const metadataDir = path.join(process.cwd(), "storage", "meta");
+const shareStore = createJsonFileShareStore(path.join(metadataDir, "shares.json"));
+const resourceStore = createJsonFileResourceStore(path.join(metadataDir, "resources.json"));
 const objectStorage = createLocalObjectStorage({
   rootDir: path.join(process.cwd(), "storage", "objects")
 });

@@ -1,4 +1,5 @@
 import type { Share } from "../domain/shares.js";
+import { createJsonFileStore } from "./jsonFileStore.js";
 
 export type ShareStore = {
   create(share: Share): Promise<Share>;
@@ -21,6 +22,28 @@ export function createMemoryShareStore(): ShareStore {
 
     async list() {
       return [...shares.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    }
+  };
+}
+
+export function createJsonFileShareStore(filePath: string): ShareStore {
+  const fileStore = createJsonFileStore<Share>(filePath);
+
+  return {
+    async create(share) {
+      const shares = await fileStore.readAll();
+      await fileStore.writeAll([share, ...shares.filter((existingShare) => existingShare.id !== share.id)]);
+      return share;
+    },
+
+    async findById(id) {
+      const shares = await fileStore.readAll();
+      return shares.find((share) => share.id === id) || null;
+    },
+
+    async list() {
+      const shares = await fileStore.readAll();
+      return shares.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     }
   };
 }
