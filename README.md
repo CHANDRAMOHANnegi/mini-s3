@@ -1,109 +1,81 @@
-# Mini S3 Share Storage
+# Mini S3
 
-A tiny S3-like object storage service with Codeshare-style public links.
+A small S3-like temporary resource sharing service.
 
-It lets you create a share URL like:
-
-```txt
-http://localhost:8787/s/<shareId>
-```
-
-Anyone with that URL can interact with that share space according to the permission mode you choose.
-
-Guests do not need an account. The link is the permission.
-
-## Mental Model
-
-Real S3 gives you buckets and objects.
-
-This project gives you:
+The product idea is simple:
 
 ```txt
-Share URL = a small bucket-like space
-Object key = file/resource path inside that share
-Resource URL = direct URL to one uploaded object
-Metadata = size, type, checksum, created time
-Permission mode = what the link holder can do
+create a share link
+  -> choose permission
+  -> send URL to someone
+  -> they upload, preview, download, or delete based on that link
 ```
 
-Example:
-
-```txt
-/s/abc123
-  people use this page to upload/list files
-
-/r/abc123/demo.pdf
-  direct URL to one uploaded resource
-```
+No guest login. The URL is the capability.
 
 ## Run Locally
 
 ```bash
+npm install
 npm run dev
 ```
 
-Then open:
+Open:
 
 ```txt
 http://localhost:8787
 ```
 
-Create a share, copy the generated URL, and send it to someone on the same network or hosted domain.
+Do not open `public/index.html` through Live Server. The UI must be served by the Express app because it calls the same origin API.
 
-## Planning Preview
+## Scripts
 
-Open this standalone HTML file to discuss the product UI before changing the real app:
-
-```txt
-docs/previews/ui-preview.html
+```bash
+npm test       # run Node test suite
+npm run check # TypeScript typecheck
+npm run build # compile to dist/
+npm run dev   # run TypeScript server
+npm start     # run compiled server
 ```
 
-It previews the owner flow, guest upload flow, resource list, permissions, preview surface, download/delete actions, and audit trail.
-
-## Product Direction
-
-This should feel like Codeshare or document link sharing, not like a login-heavy storage dashboard.
+## What Works Now
 
 ```txt
-Owner/admin
-  creates a share link
-  chooses readonly, upload, or edit
-  can revoke/expire the link
-
-Guest
-  opens the link
-  immediately interacts with resources
-  does not sign up
-  does not log in
+share creation
+permission modes: readonly, upload, edit
+browser UI
+multipart file upload
+resource listing
+preview route
+download route
+delete route for edit links
+expiry enforcement
+local object storage
+JSON metadata persistence
+cleanup scheduler for expired resources
 ```
-
-The production rule is: **no login wall for guests**. Use login or an admin secret only for the person managing shares.
 
 ## Permission Modes
 
-Each share URL is a capability link. Whoever has the URL gets that link's permissions without logging in.
-
 ```txt
 readonly
-  list resources
-  download resources
-  cannot upload
-  cannot delete
+  list
+  preview
+  download
 
 upload
-  list resources
-  download resources
-  upload new resources
-  cannot delete
+  list
+  preview
+  download
+  upload
 
 edit
-  list resources
-  download resources
-  upload resources
-  delete resources
+  list
+  preview
+  download
+  upload
+  delete
 ```
-
-For public hosting, the safest default is `upload`. People can contribute files, but they cannot delete other files.
 
 ## API
 
@@ -117,102 +89,157 @@ content-type: application/json
   "name": "Project dropbox",
   "accessMode": "upload",
   "expiresInHours": 24,
-  "maxObjectBytes": 104857600
+  "maxResourceBytes": 104857600
 }
 ```
 
-Upload an object:
+Open a share:
 
 ```http
-PUT /api/shares/:shareId/objects/:objectKey
-content-type: application/octet-stream
-
-<raw file bytes>
+GET /api/shares/:shareId
 ```
 
-List objects:
+List resources:
 
 ```http
-GET /api/shares/:shareId/objects
+GET /api/shares/:shareId/resources
 ```
 
-Download an object:
+Upload a file:
 
 ```http
-GET /r/:shareId/:objectKey
+POST /api/shares/:shareId/resources
+content-type: multipart/form-data
+
+file=<bytes>
 ```
 
-Delete an object:
+Preview:
 
 ```http
-DELETE /api/shares/:shareId/objects/:objectKey
+GET /api/shares/:shareId/resources/:resourceId/preview
 ```
 
-This only works when the share was created with:
+Download:
 
-```json
-{
-  "accessMode": "edit"
-}
+```http
+GET /api/shares/:shareId/resources/:resourceId/download
+```
+
+Delete:
+
+```http
+DELETE /api/shares/:shareId/resources/:resourceId
+```
+
+Delete works only for `edit` shares.
+
+## Browser Routes
+
+```txt
+/           create/open share UI
+/s/:shareId open a share UI
+```
+
+Example:
+
+```txt
+http://localhost:8787/s/share_xxx
 ```
 
 ## Storage Layout
 
-Uploaded files are stored on disk:
-
 ```txt
 storage/
-  shares.json
   objects/
-    <shareId>/
-      file.pdf
+    shares/
+      <shareId>/
+        resources/
+          <resourceId>
   meta/
-    <shareId>/
-      file.pdf.json
+    shares.json
+    resources.json
 ```
 
-The file bytes and metadata are separate, just like real object storage separates object data from object metadata/indexing.
-
-## Hosting Notes
-
-For a real public deployment, do not expose unlimited anonymous upload without guardrails.
-
-Add these before using it seriously:
-
-- Admin login or admin secret for creating and revoking share links.
-- No guest login; guest access should remain link-based.
-- Random unguessable share IDs, already included here.
-- Expiry, already included here.
-- Max file size, already included here.
-- Rate limiting per IP.
-- Malware scanning for uploaded files.
-- File type rules.
-- Private admin token for creating edit links.
-- Durable storage volume or cloud disk.
-- HTTPS.
-- Backups.
-
-## How This Maps To S3
-
-This project is not production S3, but it teaches the same core shape:
+Bytes and metadata are intentionally separate.
 
 ```txt
-Client
-  -> gets a share/upload URL
-  -> uploads bytes
-  -> storage saves object by key
-  -> metadata records object details
-  -> resource URL serves the object later
+bytes    -> ObjectStorage
+metadata -> ShareStore / ResourceStore
 ```
 
-Production S3 adds much harder pieces: replication, partitioning, lifecycle rules, versioning, encryption, IAM, consistency guarantees, audits, and repair jobs.
+This lets us swap implementations later:
 
-## Next Improvements
+```txt
+local disk -> S3/R2/MinIO
+JSON file  -> Postgres
+```
 
-- Multipart upload for large files.
-- Presigned upload/download URLs.
-- Object versioning.
-- Per-share permissions.
-- Background cleanup for expired shares.
-- S3-compatible API shape.
-- Dockerfile for deployment.
+## Cleanup
+
+The server starts a cleanup scheduler.
+
+Default interval:
+
+```txt
+5 minutes
+```
+
+Override:
+
+```bash
+CLEANUP_INTERVAL_MS=60000 npm run dev
+```
+
+Cleanup scans resources, removes expired bytes, and marks expired metadata deleted.
+
+## Learning Docs
+
+The implementation is split into lessons:
+
+```txt
+docs/LESSON_01_DOMAIN_MODEL.md
+...
+docs/LESSON_17_BROWSER_UI.md
+```
+
+Start with:
+
+```txt
+docs/REQUIREMENTS.md
+docs/SYSTEM_DESIGN.md
+docs/API_DESIGN.md
+docs/IMPLEMENTATION_PLAN.md
+```
+
+## Current Limitations
+
+This is a strong learning MVP, not production S3.
+
+Important gaps:
+
+```txt
+no Postgres yet
+no rate limiting yet
+no malware scanning
+no auth for share creation
+no direct-to-object-storage upload
+no resumable large uploads
+no distributed cleanup lock
+no Docker/deployment config yet
+```
+
+## Production Direction
+
+Next production steps:
+
+```txt
+Postgres for metadata
+object storage provider: S3/R2/MinIO
+rate limiting
+admin token for creating shares
+Dockerfile
+deployment docs
+structured logs
+request ids
+```
